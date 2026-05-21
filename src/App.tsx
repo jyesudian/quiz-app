@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FC } from 'react';
 import { Book, Play, Users, LogOut, ChevronRight, Plus, Edit3, Shield, User, Mail, Lock, Languages, BrainCircuit, Trophy, List, CheckCircle, XCircle, Snowflake, UserPlus, Trash2 } from 'lucide-react';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
-// @ts-ignore
 import { supabase } from './supabaseClient';
 
 const INITIAL_MOCK_SERIES = [
@@ -720,10 +720,83 @@ const StudentLeaderboard = ({ selectedSeriesId, setCurrentView, currentUser }: a
   );
 };
 
+
+const UpdatePasswordScreen = ({ setCurrentView }: any) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleUpdate = async (e: any) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    setSuccess(false);
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setSuccess(true);
+      setTimeout(() => {
+        setCurrentView('dashboard');
+      }, 2000);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-2xl shadow-xl border border-blue-100">
+      <div className="flex justify-center mb-6">
+        <div className="bg-blue-100 p-3 rounded-full text-blue-800">
+          <Lock size={32} />
+        </div>
+      </div>
+      <h2 className="text-2xl font-bold text-center text-gray-900 mb-6">Set New Password</h2>
+      
+      {success ? (
+        <div className="text-center">
+          <div className="bg-green-100 text-green-800 p-4 rounded-xl mb-4 font-medium">Password updated successfully!</div>
+          <p className="text-gray-500">Redirecting to dashboard...</p>
+        </div>
+      ) : (
+        <form onSubmit={handleUpdate} className="space-y-6">
+          {error && (
+            <div className="bg-red-100 text-red-700 p-3 rounded-lg text-sm">{error}</div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter at least 6 characters"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-800 text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-900 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedSeriesId, setSelectedSeriesId] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const [seriesData, setSeriesData] = useState<any[]>(INITIAL_MOCK_SERIES);
   const [quizDataState, setQuizDataState] = useState<any[]>(MOCK_QUIZZES);
@@ -738,8 +811,50 @@ export default function App() {
   const [authError, setAuthError] = useState<any>(null);
 
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event: any, session: any) => {
-      if (session) {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setIsAuthLoading(false);
+        return;
+      }
+
+      // If there's a session, proceed to fetch profile and set user
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        setCurrentUser({
+          id: session.user.id,
+          name: session.user.email || 'New User',
+          role: 'student',
+        });
+      } else {
+        setCurrentUser({
+          id: session.user.id,
+          name: profile.full_name || session.user.email,
+          role: profile.role,
+        });
+      }
+      setIsAuthLoading(false);
+    };
+
+    checkSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setCurrentView('update-password');
+        setIsAuthLoading(false); // Stop loading on recovery
+        return;
+      }
+      
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setCurrentView('dashboard'); // Reset view on sign out
+      } else if (session) {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('full_name, role')
@@ -760,20 +875,21 @@ export default function App() {
             role: profile.role,
           });
         }
-        setAuthError(null);
-      } else {
-        setCurrentUser(null);
       }
-    });
-
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (session) supabase.auth.onAuthStateChange((_e: any, _s: any) => {});
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
   }, []);
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-xl font-bold text-blue-800">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-gray-900">
@@ -789,14 +905,27 @@ export default function App() {
           setAdminPassword={setAdminPassword} 
         />
       ) : (
+        currentView === 'update-password' ? 
+        <UpdatePasswordScreen setCurrentView={setCurrentView} /> :
         <>
           <NavBar setCurrentView={setCurrentView} currentUser={currentUser} setAuthError={setAuthError} />
           <main>
-            {currentView === 'dashboard' && currentUser?.role === 'admin' && <AdminDashboard seriesData={seriesData} setSeriesData={setSeriesData} pendingRequests={pendingRequests} setPendingRequests={setPendingRequests} setEditingQuiz={setEditingQuiz} setCurrentView={setCurrentView} quizDataState={quizDataState} />}
-            {currentView === 'dashboard' && currentUser?.role === 'student' && <StudentDashboard seriesData={seriesData} setSeriesData={setSeriesData} currentUser={currentUser} setSelectedSeriesId={setSelectedSeriesId} setCurrentView={setCurrentView} />}
-            {currentView === 'create-quiz' && currentUser?.role === 'admin' && <CreateQuiz editingQuiz={editingQuiz} setEditingQuiz={setEditingQuiz} seriesData={seriesData} setQuizDataState={setQuizDataState} setCurrentView={setCurrentView} />}
-            {currentView === 'take-quiz' && currentUser?.role === 'student' && <TakeQuiz setCurrentView={setCurrentView} />}
-            {currentView === 'student-leaderboard' && currentUser?.role === 'student' && <StudentLeaderboard selectedSeriesId={selectedSeriesId} setCurrentView={setCurrentView} currentUser={currentUser} />}
+            {currentUser?.role === 'admin' && currentView === 'dashboard' && <AdminDashboard seriesData={seriesData} setSeriesData={setSeriesData} pendingRequests={pendingRequests} setPendingRequests={setPendingRequests} setEditingQuiz={setEditingQuiz} setCurrentView={setCurrentView} quizDataState={quizDataState} />}
+            {currentUser?.role === 'student' && currentView === 'dashboard' && <StudentDashboard seriesData={seriesData} setSeriesData={setSeriesData} currentUser={currentUser} setSelectedSeriesId={setSelectedSeriesId} setCurrentView={setCurrentView} />}
+            {currentUser?.role === 'admin' && currentView === 'create-quiz' && <CreateQuiz editingQuiz={editingQuiz} setEditingQuiz={setEditingQuiz} seriesData={seriesData} setQuizDataState={setQuizDataState} setCurrentView={setCurrentView} />}
+            {currentUser?.role === 'student' && currentView === 'take-quiz' && <TakeQuiz setCurrentView={setCurrentView} />}
+            {currentUser?.role === 'student' && currentView === 'student-leaderboard' && <StudentLeaderboard selectedSeriesId={selectedSeriesId} setCurrentView={setCurrentView} currentUser={currentUser} />}
+            
+            {/* Fallback for logged-in users with unknown roles or views */}
+            {(currentView !== 'update-password' && (currentUser?.role !== 'admin' && currentUser?.role !== 'student')) && 
+              <div className="p-8 text-center text-gray-500">Access Denied or Unknown Role.</div>
+            }
+            {(currentView !== 'update-password' && currentUser?.role === 'student' && currentView !== 'dashboard' && currentView !== 'take-quiz' && currentView !== 'student-leaderboard') &&
+              <div className="p-8 text-center text-gray-500">Invalid view for student.</div>
+            }
+             {(currentView !== 'update-password' && currentUser?.role === 'admin' && currentView !== 'dashboard' && currentView !== 'create-quiz') &&
+              <div className="p-8 text-center text-gray-500">Invalid view for admin.</div>
+            }
           </main>
         </>
       )}
