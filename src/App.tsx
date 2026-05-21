@@ -1,4 +1,4 @@
-import { useState, useEffect, type FC } from 'react';
+import { useState, useEffect } from 'react';
 import { Book, Play, Users, LogOut, ChevronRight, Plus, Edit3, Shield, User, Mail, Lock, Languages, BrainCircuit, Trophy, List, CheckCircle, XCircle, Snowflake, UserPlus, Trash2 } from 'lucide-react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
@@ -10,20 +10,66 @@ const INITIAL_MOCK_SERIES = [
   { id: 3, title: 'Lenten Journey', group: 'General Congregation', totalQuizzes: 7, completed: 120, isBilingual: true, requiresApproval: false, isFrozen: true, enrolled: ['David Raj'] },
 ];
 
-const MOCK_QUIZZES = [
-  { id: 101, seriesId: 1, title: 'Revelation Chapter 1', status: 'published', questionsList: [
-    { id: 1, type: 'single', textEn: 'Who wrote the book of Revelation?', textTa: 'வெளிப்படுத்தின விசேஷத்தை எழுதியவர் யார்?', options: [{en: 'Apostle Paul', ta: 'அப்போஸ்தலனாகிய பவுல்'}, {en: 'Apostle John', ta: 'அப்போஸ்தலனாகிய யோவான்'}], answerIndex: 0, aiRubric: '' },
-    { id: 2, type: 'text', textEn: 'Describe what John saw in his first vision.', textTa: 'யோவான் தனது முதல் தரிசனத்தில் பார்த்ததை விவரி.', options: [], answerIndex: 0, aiRubric: 'Student should mention Jesus, lampstands, and stars.' }
-  ]},
-  { id: 102, seriesId: 1, title: 'The Seven Churches', status: 'draft', questionsList: [] },
-  { id: 201, seriesId: 2, title: 'Creation Days 1-3', status: 'published', questionsList: [] },
-];
 
 const MOCK_LEADERBOARD = [
   { rank: 1, name: 'David Raj', score: 285, outOf: 300, series: 'The Revelation Study', group: 'Adult Sunday School' },
   { rank: 2, name: 'Michael Thomas', score: 270, outOf: 300, series: 'The Revelation Study', group: 'Adult Sunday School' },
   { rank: 3, name: 'Priya Sam', score: 255, outOf: 300, series: 'The Revelation Study', group: 'Adult Sunday School' },
 ];
+
+const NotificationModal = ({ type, title, message, onClose }: { type: 'success' | 'error' | 'info'; title: string; message: string; onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-sm w-full overflow-hidden transform scale-100 transition-all duration-300 animate-zoom-in">
+        {/* Top brand accent border */}
+        <div className="h-2 bg-gradient-to-r from-blue-900 to-blue-800" />
+        
+        <div className="p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <Book className="h-6 w-6 text-blue-800" />
+            <span className="text-sm font-extrabold text-blue-900 tracking-tight">Grace Quiz says:</span>
+          </div>
+          
+          <div className="flex flex-col items-center text-center my-6">
+            <div className="mb-4">
+              {type === 'success' && <CheckCircle className="h-16 w-16 text-green-600 animate-bounce" />}
+              {type === 'error' && <XCircle className="h-16 w-16 text-red-600 animate-pulse" />}
+              {type === 'info' && <Book className="h-16 w-16 text-blue-800" />}
+            </div>
+            <h4 className="text-xl font-bold text-gray-900 mb-2">{title}</h4>
+            <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
+          </div>
+          
+          <div className="mt-6">
+            <button
+              onClick={onClose}
+              className="w-full py-3 px-4 bg-blue-800 hover:bg-blue-900 text-white rounded-xl font-bold shadow-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Okay
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const translateText = async (text: string): Promise<string> => {
+  if (!text || !text.trim()) return '';
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ta&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Translation request failed');
+    const data = await res.json();
+    if (data && data[0]) {
+      return data[0].map((part: any) => part[0] || '').join('');
+    }
+    return '';
+  } catch (err) {
+    console.error('Translation error:', err);
+    throw err;
+  }
+};
 
 const LoginScreen = ({ setIsAdminLogin, isAdminLogin, setAuthError, authError, adminEmail, setAdminEmail, adminPassword, setAdminPassword }: any) => {
   return (
@@ -166,17 +212,58 @@ const NavBar = ({ setCurrentView, currentUser, setAuthError }: any) => (
   </nav>
 );
 
-const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPendingRequests, setEditingQuiz, setCurrentView, quizDataState }: any) => {
+const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPendingRequests, setEditingQuiz, setCurrentView, quizDataState, showNotification }: any) => {
   const [adminTab, setAdminTab] = useState('overview'); 
-  const [adminLeaderboardSeries, setAdminLeaderboardSeries] = useState(INITIAL_MOCK_SERIES[0].title);
+  const [adminLeaderboardSeries, setAdminLeaderboardSeries] = useState('');
 
-  const toggleFreeze = (id: any) => {
-    setSeriesData(seriesData.map((s: any) => s.id === id ? { ...s, isFrozen: !s.isFrozen } : s));
+  useEffect(() => {
+    if (seriesData && seriesData.length > 0 && !adminLeaderboardSeries) {
+      setAdminLeaderboardSeries(seriesData[0].title);
+    }
+  }, [seriesData, adminLeaderboardSeries]);
+
+  const toggleFreeze = async (id: any, currentIsFrozen: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('quiz_series')
+        .update({ is_frozen: !currentIsFrozen })
+        .eq('id', id);
+      if (error) throw error;
+      setSeriesData(seriesData.map((s: any) => s.id === id ? { ...s, isFrozen: !currentIsFrozen } : s));
+    } catch (err: any) {
+      console.error('Error toggling freeze state:', err);
+      showNotification('error', 'Update Failed', 'Error updating freeze state: ' + err.message);
+    }
   };
 
-  const handleApprove = (reqId: any, studentName: any, seriesId: any) => {
-    setSeriesData(seriesData.map((s: any) => s.id === seriesId ? { ...s, enrolled: [...s.enrolled, studentName] } : s));
-    setPendingRequests(pendingRequests.filter((r: any) => r.id !== reqId));
+  const handleApprove = async (reqId: any, studentName: any, seriesId: any) => {
+    try {
+      const { error } = await supabase
+        .from('series_enrollments')
+        .update({ status: 'approved' })
+        .eq('id', reqId);
+      if (error) throw error;
+
+      setSeriesData(seriesData.map((s: any) => s.id === seriesId ? { ...s, enrolled: [...s.enrolled, studentName] } : s));
+      setPendingRequests(pendingRequests.filter((r: any) => r.id !== reqId));
+    } catch (err: any) {
+      console.error('Error approving enrollment:', err);
+      showNotification('error', 'Approval Failed', 'Error approving request: ' + err.message);
+    }
+  };
+
+  const handleReject = async (reqId: any) => {
+    try {
+      const { error } = await supabase
+        .from('series_enrollments')
+        .update({ status: 'rejected' })
+        .eq('id', reqId);
+      if (error) throw error;
+      setPendingRequests(pendingRequests.filter((r: any) => r.id !== reqId));
+    } catch (err: any) {
+      console.error('Error rejecting enrollment:', err);
+      showNotification('error', 'Rejection Failed', 'Error rejecting request: ' + err.message);
+    }
   };
 
   return (
@@ -208,7 +295,7 @@ const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPending
               <div className="divide-y divide-gray-100">
                 {seriesData.map((series: any) => (
                   <div key={series.id} className={`p-6 transition-colors ${series.isFrozen ? 'bg-slate-50' : 'hover:bg-gray-50'}`}>
-                    <div className="flex justify-between items-start mb-4">
+                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <div className="flex items-center flex-wrap gap-2 mb-1">
                           <h3 className={`text-lg font-bold ${series.isFrozen ? 'text-gray-600' : 'text-blue-900'}`}>{series.title}</h3>
@@ -223,7 +310,7 @@ const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPending
                       </div>
                     </div>
                     <div className="flex space-x-3 border-t border-gray-100 pt-3">
-                      <button onClick={() => toggleFreeze(series.id)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${series.isFrozen ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
+                      <button onClick={() => toggleFreeze(series.id, series.isFrozen)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${series.isFrozen ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
                         {series.isFrozen ? 'Unfreeze Series' : 'Freeze / Conclude Series'}
                       </button>
                     </div>
@@ -283,7 +370,7 @@ const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPending
                       <p className="text-sm text-gray-500">Requested access to: <span className="font-bold text-blue-800">{req.seriesName}</span> • {req.date}</p>
                     </div>
                     <div className="flex space-x-2">
-                      <button onClick={() => setPendingRequests(pendingRequests.filter((r: any) => r.id !== req.id))} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50">Reject</button>
+                      <button onClick={() => handleReject(req.id)} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50">Reject</button>
                       <button onClick={() => handleApprove(req.id, req.studentName, req.seriesId)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">Approve</button>
                     </div>
                   </div>
@@ -345,38 +432,263 @@ const AdminDashboard = ({ seriesData, setSeriesData, pendingRequests, setPending
   );
 };
 
-const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState, setCurrentView }: any) => {
+const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setCurrentView, onSaveSuccess, showNotification }: any) => {
   const [isBilingual, setIsBilingual] = useState(true);
   const [seriesSelection, setSeriesSelection] = useState<string>(editingQuiz ? editingQuiz.seriesId.toString() : 'new');
   const [newSeriesName, setNewSeriesName] = useState('');
+  const [newGroupName, setNewGroupName] = useState('Adult Sunday School');
   const [requiresApproval, setRequiresApproval] = useState(true);
   const [quizTitle, setQuizTitle] = useState(editingQuiz ? editingQuiz.title : '');
 
-  const [questions, setQuestions] = useState<any[]>(editingQuiz && editingQuiz.questionsList && editingQuiz.questionsList.length > 0 ? editingQuiz.questionsList : [
-    { id: 1, type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '' }], answerIndex: 0, aiRubric: '' }
-  ]);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [translatingIndexes, setTranslatingIndexes] = useState<number[]>([]);
 
-  const addQuestion = () => setQuestions([...questions, { id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '' }], answerIndex: 0, aiRubric: '' }]);
-  const addOption = (qIndex: any) => { const newQs = [...questions]; newQs[qIndex].options.push({ en: '', ta: '' }); setQuestions(newQs); };
-
-  const handleAutoTranslate = (qIndex: any) => {
-    const newQs = [...questions];
-    if(newQs[qIndex].textEn) newQs[qIndex].textTa = "(Translated) " + newQs[qIndex].textEn; 
-    if (newQs[qIndex].type === 'single' || newQs[qIndex].type === 'multiple') {
-      newQs[qIndex].options = newQs[qIndex].options.map((opt: any) => ({ ...opt, ta: opt.en ? "(Translated) " + opt.en : '' }));
-    }
-    setQuestions(newQs);
-  };
-
-  const handleSave = (status: any) => {
+  useEffect(() => {
     if (editingQuiz) {
-      setQuizDataState((prev: any) => prev.map((q: any) => q.id === editingQuiz.id ? { ...q, title: quizTitle, status, seriesId: parseInt(seriesSelection), questionsList: questions } : q));
+      const fetchQuestions = async () => {
+        setIsLoadingQuestions(true);
+        try {
+          const { data: questionsData, error: qError } = await supabase
+            .from('questions')
+            .select(`
+              id,
+              question_type,
+              text_en,
+              text_ta,
+              ai_rubric,
+              position,
+              question_options (
+                id,
+                text_en,
+                text_ta,
+                is_correct
+              )
+            `)
+            .eq('quiz_id', editingQuiz.id)
+            .order('position', { ascending: true });
+
+          if (qError) throw qError;
+
+          if (questionsData) {
+            const mappedQuestions = questionsData.map((q: any) => ({
+              id: q.id,
+              type: q.question_type,
+              textEn: q.text_en,
+              textTa: q.text_ta || '',
+              aiRubric: q.ai_rubric || '',
+              options: (q.question_options || []).map((opt: any) => ({
+                id: opt.id,
+                en: opt.text_en,
+                ta: opt.text_ta || '',
+                isCorrect: opt.is_correct || false
+              }))
+            }));
+            setQuestions(mappedQuestions);
+          }
+        } catch (err: any) {
+          console.error('Error fetching quiz questions:', err.message);
+          showNotification('error', 'Load Failed', 'Failed to load quiz questions: ' + err.message);
+        } finally {
+          setIsLoadingQuestions(false);
+        }
+      };
+      fetchQuestions();
     } else {
-      setQuizDataState((prev: any) => [...prev, { id: Date.now(), seriesId: seriesSelection === 'new' ? Date.now() : parseInt(seriesSelection), title: quizTitle, status, questionsList: questions }]);
+      setQuestions([
+        { id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false }], aiRubric: '' }
+      ]);
     }
-    setCurrentView('dashboard');
-    setEditingQuiz(null);
+  }, [editingQuiz]);
+
+  const addQuestion = () => setQuestions([...questions, { id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false }], aiRubric: '' }]);
+  
+  const addOption = (qIndex: any) => { 
+    const newQs = [...questions]; 
+    newQs[qIndex].options.push({ en: '', ta: '', isCorrect: false }); 
+    setQuestions(newQs); 
   };
+
+  const handleAutoTranslate = async (qIndex: any) => {
+    const q = questions[qIndex];
+    if (!q.textEn || !q.textEn.trim()) {
+      showNotification('info', 'Auto-Translate', 'Please enter the question text in English first.');
+      return;
+    }
+
+    setTranslatingIndexes((prev) => [...prev, qIndex]);
+    try {
+      // 1. Translate question text
+      const translatedQuestion = await translateText(q.textEn);
+      
+      // 2. Translate options if applicable
+      let translatedOptions = [];
+      if (q.type === 'single' || q.type === 'multiple') {
+        translatedOptions = await Promise.all(
+          q.options.map(async (opt: any) => {
+            if (opt.en && opt.en.trim()) {
+              const translatedOpt = await translateText(opt.en);
+              return { ...opt, ta: translatedOpt };
+            }
+            return opt;
+          })
+        );
+      } else {
+        translatedOptions = q.options;
+      }
+
+      setQuestions((prevQuestions) => {
+        const newQs = [...prevQuestions];
+        newQs[qIndex] = {
+          ...newQs[qIndex],
+          textTa: translatedQuestion,
+          options: translatedOptions,
+        };
+        return newQs;
+      });
+    } catch (err: any) {
+      console.error('Translation error:', err);
+      showNotification('error', 'Translation Failed', 'Failed to translate question. Please check your network connection.');
+    } finally {
+      setTranslatingIndexes((prev) => prev.filter((idx) => idx !== qIndex));
+    }
+  };
+
+  const handleSave = async (status: 'draft' | 'published') => {
+    if (!quizTitle.trim()) {
+      showNotification('error', 'Validation Error', 'Please enter a quiz title.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let seriesId: number;
+
+      // 1. Handle series selection
+      if (seriesSelection === 'new') {
+        if (!newSeriesName.trim()) {
+          throw new Error('Please enter a series name.');
+        }
+
+        const { data: newSeries, error: seriesError } = await supabase
+          .from('quiz_series')
+          .insert({
+            title: newSeriesName,
+            group_name: newGroupName,
+            is_bilingual: isBilingual,
+            requires_approval: requiresApproval,
+            is_frozen: false
+          })
+          .select()
+          .single();
+
+        if (seriesError) throw seriesError;
+        seriesId = newSeries.id;
+      } else {
+        seriesId = parseInt(seriesSelection);
+      }
+
+      let quizId: number;
+
+      // 2. Insert or update quiz
+      if (editingQuiz) {
+        quizId = editingQuiz.id;
+        const { error: quizUpdateError } = await supabase
+          .from('quizzes')
+          .update({
+            series_id: seriesId,
+            title: quizTitle,
+            status: status
+          })
+          .eq('id', quizId);
+
+        if (quizUpdateError) throw quizUpdateError;
+
+        // Delete existing questions
+        const { error: deleteError } = await supabase
+          .from('questions')
+          .delete()
+          .eq('quiz_id', quizId);
+
+        if (deleteError) throw deleteError;
+      } else {
+        const { data: newQuiz, error: quizInsertError } = await supabase
+          .from('quizzes')
+          .insert({
+            series_id: seriesId,
+            title: quizTitle,
+            status: status
+          })
+          .select()
+          .single();
+
+        if (quizInsertError) throw quizInsertError;
+        quizId = newQuiz.id;
+      }
+
+      // 3. Insert questions and options
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+
+        const { data: insertedQuestion, error: qError } = await supabase
+          .from('questions')
+          .insert({
+            quiz_id: quizId,
+            question_type: q.type,
+            text_en: q.textEn,
+            text_ta: q.textTa || null,
+            ai_rubric: q.aiRubric || null,
+            position: i + 1
+          })
+          .select()
+          .single();
+
+        if (qError) throw qError;
+
+        if (q.type === 'single' || q.type === 'multiple') {
+          const optionsToInsert = q.options.map((opt: any) => ({
+            question_id: insertedQuestion.id,
+            text_en: opt.en,
+            text_ta: opt.ta || null,
+            is_correct: opt.isCorrect || false
+          }));
+
+          const { error: optError } = await supabase
+            .from('question_options')
+            .insert(optionsToInsert);
+
+          if (optError) throw optError;
+        }
+      }
+
+      showNotification(
+        'success',
+        'Success',
+        editingQuiz ? 'Quiz updated successfully!' : 'Quiz created successfully!',
+        async () => {
+          if (onSaveSuccess) {
+            await onSaveSuccess();
+          }
+          setCurrentView('dashboard');
+          setEditingQuiz(null);
+        }
+      );
+    } catch (err: any) {
+      console.error('Error saving quiz:', err);
+      showNotification('error', 'Save Failed', 'Failed to save quiz: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoadingQuestions) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
+        <div className="text-lg font-medium text-gray-500">Loading quiz questions...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -385,8 +697,12 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
           <ChevronRight className="rotate-180 w-4 h-4 mr-1" /> Back to Dashboard
         </button>
         <div className="space-x-3">
-          <button onClick={() => handleSave('draft')} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">Save as Draft</button>
-          <button onClick={() => handleSave('published')} className="px-4 py-2 bg-blue-800 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-900">{editingQuiz ? 'Update Quiz' : 'Update Quiz'}</button>
+          <button disabled={isSaving} onClick={() => handleSave('draft')} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50">
+            {isSaving ? 'Saving...' : 'Save as Draft'}
+          </button>
+          <button disabled={isSaving} onClick={() => handleSave('published')} className="px-4 py-2 bg-blue-800 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-900 disabled:opacity-50">
+            {isSaving ? 'Saving...' : editingQuiz ? 'Update Quiz' : 'Publish Quiz'}
+          </button>
         </div>
       </div>
 
@@ -412,10 +728,14 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
         {seriesSelection === 'new' && (
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h4 className="text-sm font-bold text-gray-900 mb-3">New Series Settings</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Series Name</label>
                 <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 focus:ring-blue-500" placeholder="e.g. Lenten Journey" value={newSeriesName} onChange={(e) => setNewSeriesName(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Group Name</label>
+                <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 focus:ring-blue-500" placeholder="e.g. Adult Sunday School" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
               </div>
               <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Access Control</label>
@@ -452,6 +772,12 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
                   onChange={(e) => {
                     const newQs = [...questions];
                     newQs[qIndex].type = e.target.value;
+                    // Reset options and rubric structure based on type
+                    if (e.target.value === 'text') {
+                      newQs[qIndex].options = [];
+                    } else if (newQs[qIndex].options.length === 0) {
+                      newQs[qIndex].options = [{ en: '', ta: '', isCorrect: false }];
+                    }
                     setQuestions(newQs);
                   }}
                 >
@@ -459,7 +785,15 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
                   <option value="multiple">Multiple Choice</option>
                   <option value="text">Text Entry (AI Graded)</option>
                 </select>
-                <button className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuestions(questions.filter((_, idx) => idx !== qIndex));
+                  }}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
             
@@ -473,8 +807,15 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex justify-between items-center">
                       <span>Tamil Text (தமிழ்)</span>
-                      <button onClick={() => handleAutoTranslate(qIndex)} className="text-blue-600 flex items-center hover:underline bg-blue-50 px-2 py-0.5 rounded transition-colors">
-                        <Languages size={14} className="mr-1"/> Auto-Translate
+                      <button
+                        type="button"
+                        disabled={translatingIndexes.includes(qIndex)}
+                        onClick={() => handleAutoTranslate(qIndex)}
+                        className={`text-blue-600 flex items-center hover:underline bg-blue-50 px-2 py-0.5 rounded transition-colors ${
+                          translatingIndexes.includes(qIndex) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <Languages size={14} className="mr-1"/> {translatingIndexes.includes(qIndex) ? 'Translating...' : 'Auto-Translate'}
                       </button>
                     </label>
                     <textarea className="w-full border-gray-300 rounded-md border p-3 bg-slate-50" rows={2} placeholder="தமிழில்..." value={q.textTa} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].textTa = e.target.value; setQuestions(newQs); }}></textarea>
@@ -501,29 +842,119 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
               {(q.type === 'single' || q.type === 'multiple') && (
                 <div className="space-y-4 pl-4 border-l-2 border-gray-100">
                   {q.options.map((opt: any, oIndex: any) => (
-                    <div key={oIndex} className={`grid grid-cols-1 ${isBilingual ? 'lg:grid-cols-12' : 'lg:grid-cols-12'} gap-4 items-center`}>
-                        <div className="lg:col-span-1 text-center">
-                          <input type={q.type === 'single' ? 'radio' : 'checkbox'} name={`q-${q.id}`} className="w-4 h-4 text-blue-600" />
+                    <div key={oIndex} className="grid grid-cols-12 gap-4 items-center">
+                        <div className="col-span-1 text-center">
+                          <input
+                            type={q.type === 'single' ? 'radio' : 'checkbox'}
+                            name={`q-${q.id}`}
+                            checked={opt.isCorrect || false}
+                            onChange={(e) => {
+                              const newQs = [...questions];
+                              if (q.type === 'single') {
+                                newQs[qIndex].options = newQs[qIndex].options.map((o: any, idx: number) => ({
+                                  ...o,
+                                  isCorrect: idx === oIndex
+                                }));
+                              } else {
+                                newQs[qIndex].options[oIndex].isCorrect = e.target.checked;
+                              }
+                              setQuestions(newQs);
+                            }}
+                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
                         </div>
-                        <div className={isBilingual ? 'lg:col-span-5' : 'lg:col-span-11'}>
+                        <div className={isBilingual ? 'col-span-5' : 'col-span-10'}>
                           <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 focus:ring-blue-500" placeholder={`Option ${oIndex + 1} (English)`} value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} />
                         </div>
                         {isBilingual && (
-                          <div className="lg:col-span-6">
-                            <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 focus:ring-blue-500 bg-slate-50" placeholder={`விருப்பம் ${oIndex + 1} (Tamil)`} value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} />
+                          <div className="col-span-5 relative flex items-center">
+                            <input
+                              type="text"
+                              className="w-full border-gray-300 rounded text-sm border p-2 pr-8 focus:ring-blue-500 bg-slate-50"
+                              placeholder={`விருப்பம் ${oIndex + 1} (Tamil)`}
+                              value={opt.ta}
+                              onChange={(e) => {
+                                const newQs = [...questions];
+                                newQs[qIndex].options[oIndex].ta = e.target.value;
+                                setQuestions(newQs);
+                              }}
+                            />
+                            {opt.en && opt.en.trim() && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const trans = await translateText(opt.en);
+                                    const newQs = [...questions];
+                                    newQs[qIndex].options[oIndex].ta = trans;
+                                    setQuestions(newQs);
+                                  } catch (err) {
+                                    showNotification('error', 'Translation Failed', 'Failed to translate option.');
+                                  }
+                                }}
+                                className="absolute right-2 text-blue-500 hover:text-blue-700 transition-colors p-1 flex items-center justify-center"
+                                title="Translate Option"
+                              >
+                                <Languages size={14} />
+                              </button>
+                            )}
                           </div>
                         )}
+                        <div className="col-span-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newQs = [...questions];
+                              newQs[qIndex].options = newQs[qIndex].options.filter((_: any, idx: number) => idx !== oIndex);
+                              setQuestions(newQs);
+                            }}
+                            className="text-red-400 hover:text-red-600 transition-colors p-1"
+                            title="Delete Option"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                     </div>
                   ))}
-                  <button onClick={() => addOption(qIndex)} className="text-xs text-blue-600 font-bold flex items-center mt-2 hover:bg-blue-50 px-2 py-1 rounded transition-colors">
-                    <Plus size={14} className="mr-1" /> Add Option
-                  </button>
+                  <div className="flex items-center space-x-4 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => addOption(qIndex)}
+                      className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                    >
+                      <Plus size={14} className="mr-1" /> Add Option
+                    </button>
+                    {isBilingual && q.options.some((o: any) => o.en && o.en.trim()) && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const newQs = [...questions];
+                            await Promise.all(
+                              q.options.map(async (opt: any, oIdx: number) => {
+                                if (opt.en && opt.en.trim()) {
+                                  const trans = await translateText(opt.en);
+                                  newQs[qIndex].options[oIdx].ta = trans;
+                                }
+                              })
+                            );
+                            setQuestions(newQs);
+                          } catch (err) {
+                            showNotification('error', 'Translation Failed', 'Failed to translate options.');
+                          }
+                        }}
+                        className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                      >
+                        <Languages size={14} className="mr-1" /> Translate All Options
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         ))}
-        <button onClick={addQuestion} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-bold hover:bg-gray-50 hover:text-blue-600 transition-all flex items-center justify-center">
+        <button type="button" onClick={addQuestion} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-bold hover:bg-gray-50 hover:text-blue-600 transition-all flex items-center justify-center">
           <Plus size={20} className="mr-2" /> Add Another Question
         </button>
       </div>
@@ -531,15 +962,35 @@ const CreateQuiz = ({ editingQuiz, setEditingQuiz, seriesData, setQuizDataState,
   );
 };
 
-const StudentDashboard = ({ seriesData, setSeriesData, currentUser, setSelectedSeriesId, setCurrentView }: any) => {
+const StudentDashboard = ({ seriesData, currentUser, setSelectedSeriesId, setCurrentView, onJoinSuccess, showNotification }: any) => {
   const enrolledSeries = seriesData.filter((s: any) => s.enrolled.includes(currentUser.name));
   const availableSeries = seriesData.filter((s: any) => !s.enrolled.includes(currentUser.name) && !s.isFrozen);
 
-  const handleJoin = (series: any) => {
-    if (series.requiresApproval) {
-      alert(`Request sent to admin to join "${series.title}".`);
-    } else {
-      setSeriesData(seriesData.map((s: any) => s.id === series.id ? { ...s, enrolled: [...s.enrolled, currentUser.name] } : s));
+  const handleJoin = async (series: any) => {
+    try {
+      const status = series.requiresApproval ? 'pending' : 'approved';
+      const { error } = await supabase
+        .from('series_enrollments')
+        .insert({
+          series_id: series.id,
+          user_id: currentUser.id,
+          status: status
+        });
+
+      if (error) throw error;
+
+      const message = series.requiresApproval
+        ? `Request sent to admin to join "${series.title}".`
+        : `Successfully joined "${series.title}"!`;
+
+      showNotification('success', 'Series Registration', message, async () => {
+        if (onJoinSuccess) {
+          await onJoinSuccess();
+        }
+      });
+    } catch (err: any) {
+      console.error('Error joining series:', err);
+      showNotification('error', 'Registration Failed', 'Error joining series: ' + err.message);
     }
   };
 
@@ -599,8 +1050,18 @@ const StudentDashboard = ({ seriesData, setSeriesData, currentUser, setSelectedS
                <div className="mt-4 flex items-center gap-2 mb-6">
                   {series.requiresApproval ? <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded font-bold border border-amber-200 flex items-center"><Lock size={12} className="mr-1"/> Request Required</span> : <span className="bg-green-50 text-green-700 text-xs px-2 py-1 rounded font-bold border border-green-200">Open Access</span>}
                </div>
-               <button onClick={() => handleJoin(series)} className={`w-full py-2 rounded-lg font-bold text-sm transition-colors ${series.requiresApproval ? 'bg-white border border-blue-600 text-blue-700 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                  {series.requiresApproval ? 'Request Access' : 'Unlock / Join Instantly'}
+               <button 
+                 disabled={series.isPending}
+                 onClick={() => handleJoin(series)}
+                 className={`w-full py-2 rounded-lg font-bold text-sm transition-colors ${
+                   series.isPending
+                     ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                     : series.requiresApproval
+                       ? 'bg-white border border-blue-600 text-blue-700 hover:bg-blue-50'
+                       : 'bg-blue-600 text-white hover:bg-blue-700'
+                 }`}
+               >
+                  {series.isPending ? 'Request Pending' : series.requiresApproval ? 'Request Access' : 'Unlock / Join Instantly'}
                </button>
             </div>
          ))}
@@ -798,63 +1259,192 @@ export default function App() {
   const [selectedSeriesId, setSelectedSeriesId] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  const [seriesData, setSeriesData] = useState<any[]>(INITIAL_MOCK_SERIES);
-  const [quizDataState, setQuizDataState] = useState<any[]>(MOCK_QUIZZES);
+  const [seriesData, setSeriesData] = useState<any[]>([]);
+  const [quizDataState, setQuizDataState] = useState<any[]>([]);
   const [editingQuiz, setEditingQuiz] = useState<any>(null);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([
-    { id: 101, studentName: 'Sarah John', seriesId: 1, seriesName: 'The Revelation Study', date: 'Just now' }
-  ]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
 
   const [isAdminLogin, setIsAdminLogin] = useState<boolean>(false);
   const [adminEmail, setAdminEmail] = useState<string>('');
   const [adminPassword, setAdminPassword] = useState<string>('');
   const [authError, setAuthError] = useState<any>(null);
 
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+    onClose?: () => void;
+  } | null>(null);
+
+  const showNotification = (
+    type: 'success' | 'error' | 'info',
+    title: string,
+    message: string,
+    onClose?: () => void
+  ) => {
+    setNotification({ type, title, message, onClose });
+  };
+
+  const fetchDashboardData = async () => {
+    if (!currentUser) return;
+    try {
+      if (currentUser.role === 'admin') {
+        const { data: seriesList, error: seriesError } = await supabase
+          .from('quiz_series')
+          .select(`
+            *,
+            series_enrollments (
+              status,
+              profiles (
+                full_name
+              )
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (seriesError) throw seriesError;
+
+        const { data: quizzesList, error: quizzesError } = await supabase
+          .from('quizzes')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (quizzesError) throw quizzesError;
+
+        const { data: enrollmentsList, error: enrollmentsError } = await supabase
+          .from('series_enrollments')
+          .select(`
+            id,
+            series_id,
+            created_at,
+            profiles (
+              full_name
+            ),
+            quiz_series (
+              title
+            )
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+
+        if (enrollmentsError) throw enrollmentsError;
+
+        const mappedSeries = (seriesList || []).map((s: any) => {
+          const enrolledNames = (s.series_enrollments || [])
+            .filter((e: any) => e.status === 'approved')
+            .map((e: any) => e.profiles?.full_name || 'Unknown Student');
+          return {
+            id: s.id,
+            title: s.title,
+            group: s.group_name || '',
+            totalQuizzes: (quizzesList || []).filter((q: any) => q.series_id === s.id).length,
+            isBilingual: s.is_bilingual,
+            requiresApproval: s.requires_approval,
+            isFrozen: s.is_frozen,
+            enrolled: enrolledNames
+          };
+        });
+
+        const mappedQuizzes = (quizzesList || []).map((q: any) => ({
+          id: q.id,
+          seriesId: q.series_id,
+          title: q.title,
+          status: q.status
+        }));
+
+        const mappedRequests = (enrollmentsList || []).map((e: any) => {
+          const dateStr = e.created_at ? new Date(e.created_at).toLocaleDateString() : 'Just now';
+          return {
+            id: e.id,
+            studentName: e.profiles?.full_name || 'Unknown Student',
+            seriesId: e.series_id,
+            seriesName: e.quiz_series?.title || 'Unknown Series',
+            date: dateStr
+          };
+        });
+
+        setSeriesData(mappedSeries);
+        setQuizDataState(mappedQuizzes);
+        setPendingRequests(mappedRequests);
+      } else {
+        const { data: seriesList, error: seriesError } = await supabase
+          .from('quiz_series')
+          .select(`
+            *,
+            series_enrollments (
+              status,
+              user_id
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (seriesError) throw seriesError;
+
+        const { data: quizzesList, error: quizzesError } = await supabase
+          .from('quizzes')
+          .select('*')
+          .eq('status', 'published');
+
+        if (quizzesError) throw quizzesError;
+
+        const mappedSeries = (seriesList || []).map((s: any) => {
+          const myEnrollment = (s.series_enrollments || []).find((e: any) => e.user_id === currentUser.id);
+          const enrolledList = myEnrollment && myEnrollment.status === 'approved' ? [currentUser.name] : [];
+          const isPending = myEnrollment && myEnrollment.status === 'pending';
+
+          return {
+            id: s.id,
+            title: s.title,
+            group: s.group_name || '',
+            totalQuizzes: (quizzesList || []).filter((q: any) => q.series_id === s.id).length,
+            isBilingual: s.is_bilingual,
+            requiresApproval: s.requires_approval,
+            isFrozen: s.is_frozen,
+            enrolled: enrolledList,
+            isPending: isPending
+          };
+        });
+
+        const mappedQuizzes = (quizzesList || []).map((q: any) => ({
+          id: q.id,
+          seriesId: q.series_id,
+          title: q.title,
+          status: q.status
+        }));
+
+        setSeriesData(mappedSeries);
+        setQuizDataState(mappedQuizzes);
+      }
+    } catch (err: any) {
+      console.error('Error fetching dashboard data:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchDashboardData();
+    } else {
+      setSeriesData([]);
+      setQuizDataState([]);
+      setPendingRequests([]);
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setIsAuthLoading(false);
-        return;
-      }
+      console.log('Grace Quiz - checkSession: started');
+      try {
+        console.log('Grace Quiz - checkSession: fetching session...');
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Grace Quiz - checkSession: getSession resolved, session is:', session);
+        if (!session) {
+          console.log('Grace Quiz - checkSession: no active session found. App will show LoginScreen.');
+          setIsAuthLoading(false);
+          return;
+        }
 
-      // If there's a session, proceed to fetch profile and set user
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-        setCurrentUser({
-          id: session.user.id,
-          name: session.user.email || 'New User',
-          role: 'student',
-        });
-      } else {
-        setCurrentUser({
-          id: session.user.id,
-          name: profile.full_name || session.user.email,
-          role: profile.role,
-        });
-      }
-      setIsAuthLoading(false);
-    };
-
-    checkSession();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setCurrentView('update-password');
-        setIsAuthLoading(false); // Stop loading on recovery
-        return;
-      }
-      
-      if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-        setCurrentView('dashboard'); // Reset view on sign out
-      } else if (session) {
+        // If there's a session, proceed to fetch profile and set user
+        console.log('Grace Quiz - checkSession: active session found, fetching profile for ID:', session.user.id);
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('full_name, role')
@@ -862,23 +1452,79 @@ export default function App() {
           .single();
 
         if (profileError) {
-          console.error('Error fetching profile:', profileError);
+          console.error('Grace Quiz - checkSession: profile fetch error:', profileError);
           setCurrentUser({
             id: session.user.id,
             name: session.user.email || 'New User',
             role: 'student',
           });
         } else {
+          console.log('Grace Quiz - checkSession: profile loaded successfully:', profile);
           setCurrentUser({
             id: session.user.id,
             name: profile.full_name || session.user.email,
             role: profile.role,
           });
         }
+      } catch (err) {
+        console.error('Grace Quiz - checkSession: Unexpected exception:', err);
+      } finally {
+        console.log('Grace Quiz - checkSession: setting isAuthLoading to false');
+        setIsAuthLoading(false);
+      }
+    };
+
+    console.log('Grace Quiz: Initializing checkSession and onAuthStateChange...');
+    checkSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+      console.log('Grace Quiz - onAuthStateChange event:', event, 'session:', session);
+      try {
+        if (event === 'PASSWORD_RECOVERY') {
+          console.log('Grace Quiz - onAuthStateChange: PASSWORD_RECOVERY event triggered');
+          setCurrentView('update-password');
+          setIsAuthLoading(false); // Stop loading on recovery
+          return;
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          console.log('Grace Quiz - onAuthStateChange: SIGNED_OUT event triggered');
+          setCurrentUser(null);
+          setCurrentView('dashboard'); // Reset view on sign out
+        } else if (session) {
+          console.log('Grace Quiz - onAuthStateChange: user session active, fetching profile for ID:', session.user.id);
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name, role')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profileError) {
+            console.error('Grace Quiz - onAuthStateChange: profile fetch error:', profileError);
+            setCurrentUser({
+              id: session.user.id,
+              name: session.user.email || 'New User',
+              role: 'student',
+            });
+          } else {
+            console.log('Grace Quiz - onAuthStateChange: profile loaded successfully:', profile);
+            setCurrentUser({
+              id: session.user.id,
+              name: profile.full_name || session.user.email,
+              role: profile.role,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Grace Quiz - onAuthStateChange: Unexpected exception:', err);
+      } finally {
+        console.log('Grace Quiz - onAuthStateChange: setting isAuthLoading to false');
+        setIsAuthLoading(false);
       }
     });
 
     return () => {
+      console.log('Grace Quiz: Unsubscribing onAuthStateChange listener...');
       authListener.subscription.unsubscribe();
     };
   }, []);
@@ -910,9 +1556,9 @@ export default function App() {
         <>
           <NavBar setCurrentView={setCurrentView} currentUser={currentUser} setAuthError={setAuthError} />
           <main>
-            {currentUser?.role === 'admin' && currentView === 'dashboard' && <AdminDashboard seriesData={seriesData} setSeriesData={setSeriesData} pendingRequests={pendingRequests} setPendingRequests={setPendingRequests} setEditingQuiz={setEditingQuiz} setCurrentView={setCurrentView} quizDataState={quizDataState} />}
-            {currentUser?.role === 'student' && currentView === 'dashboard' && <StudentDashboard seriesData={seriesData} setSeriesData={setSeriesData} currentUser={currentUser} setSelectedSeriesId={setSelectedSeriesId} setCurrentView={setCurrentView} />}
-            {currentUser?.role === 'admin' && currentView === 'create-quiz' && <CreateQuiz editingQuiz={editingQuiz} setEditingQuiz={setEditingQuiz} seriesData={seriesData} setQuizDataState={setQuizDataState} setCurrentView={setCurrentView} />}
+            {currentUser?.role === 'admin' && currentView === 'dashboard' && <AdminDashboard seriesData={seriesData} setSeriesData={setSeriesData} pendingRequests={pendingRequests} setPendingRequests={setPendingRequests} setEditingQuiz={setEditingQuiz} setCurrentView={setCurrentView} quizDataState={quizDataState} showNotification={showNotification} />}
+            {currentUser?.role === 'student' && currentView === 'dashboard' && <StudentDashboard seriesData={seriesData} currentUser={currentUser} setSelectedSeriesId={setSelectedSeriesId} setCurrentView={setCurrentView} onJoinSuccess={fetchDashboardData} showNotification={showNotification} />}
+            {currentUser?.role === 'admin' && currentView === 'create-quiz' && <CreateQuiz editingQuiz={editingQuiz} setEditingQuiz={setEditingQuiz} seriesData={seriesData} setCurrentView={setCurrentView} onSaveSuccess={fetchDashboardData} showNotification={showNotification} />}
             {currentUser?.role === 'student' && currentView === 'take-quiz' && <TakeQuiz setCurrentView={setCurrentView} />}
             {currentUser?.role === 'student' && currentView === 'student-leaderboard' && <StudentLeaderboard selectedSeriesId={selectedSeriesId} setCurrentView={setCurrentView} currentUser={currentUser} />}
             
@@ -927,6 +1573,19 @@ export default function App() {
               <div className="p-8 text-center text-gray-500">Invalid view for admin.</div>
             }
           </main>
+          {notification && (
+            <NotificationModal
+              type={notification.type}
+              title={notification.title}
+              message={notification.message}
+              onClose={() => {
+                if (notification.onClose) {
+                  notification.onClose();
+                }
+                setNotification(null);
+              }}
+            />
+          )}
         </>
       )}
     </div>
