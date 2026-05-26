@@ -14,7 +14,7 @@ export interface QuizSeries {
   isFrozen: boolean;
   enrolled: string[];
   isPending?: boolean;
-  quizzes?: { id: number; title: string }[];
+  quizzes?: { id: number; title: string; isAttempted?: boolean }[];
 }
 
 export interface Quiz {
