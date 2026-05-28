@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3 } from 'lucide-react';
+import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3, Share2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -171,6 +171,16 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleShare = async (quizId: number) => {
+    const shareUrl = `${window.location.origin}/student/quiz/${quizId}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Quiz link copied to clipboard!');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
@@ -228,9 +238,20 @@ export const AdminDashboard = () => {
                               <span className="text-sm font-bold text-gray-800">{quiz.title}</span>
                               <span className={`ml-3 text-xs px-2 py-0.5 rounded-full font-bold ${quiz.status === 'published' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{quiz.status === 'published' ? 'Published' : 'Draft'}</span>
                             </div>
-                            <button onClick={() => navigate(`/admin/edit-quiz/${quiz.id}`)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold">
-                              <Edit3 size={14} className="mr-1" /> Edit
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {quiz.status === 'published' && (
+                                <button 
+                                  onClick={() => handleShare(quiz.id)}
+                                  title="Share Quiz Link"
+                                  className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold"
+                                >
+                                  <Share2 size={14} className="mr-1" /> Share
+                                </button>
+                              )}
+                              <button onClick={() => navigate(`/admin/edit-quiz/${quiz.id}`)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold">
+                                <Edit3 size={14} className="mr-1" /> Edit
+                              </button>
+                            </div>
                           </div>
                         ))}
                         {quizDataState.filter((q) => q.seriesId === series.id).length === 0 && (

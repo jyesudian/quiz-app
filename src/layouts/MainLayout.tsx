@@ -1,9 +1,10 @@
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { NavBar } from '../components/NavBar';
 import { useAuth } from '../contexts/AuthContext';
 
 export const MainLayout = ({ requiredRole }: { requiredRole?: 'student' | 'admin' }) => {
   const { user, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -14,7 +15,7 @@ export const MainLayout = ({ requiredRole }: { requiredRole?: 'student' | 'admin
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (requiredRole && user.role !== requiredRole) {

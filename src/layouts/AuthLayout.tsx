@@ -1,8 +1,9 @@
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export const AuthLayout = () => {
   const { user, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -13,7 +14,9 @@ export const AuthLayout = () => {
   }
 
   if (user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/student'} replace />;
+    const from = location.state?.from?.pathname || (user.role === 'admin' ? '/admin' : '/student');
+    const search = location.state?.from?.search || '';
+    return <Navigate to={from + search} replace />;
   }
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Book, Play, Trophy, Snowflake, UserPlus, Lock, Check } from 'lucide-react';
+import { Book, Play, Trophy, Snowflake, UserPlus, Lock, Check, Share2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -79,6 +79,16 @@ export const StudentDashboard = () => {
     }
   };
 
+  const handleShare = async (quizId: number) => {
+    const shareUrl = `${window.location.origin}/student/quiz/${quizId}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Quiz link copied to clipboard!');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  };
+
   const enrolledSeries = seriesData.filter(s => s.enrolled.includes(user?.name || ''));
   const availableSeries = seriesData.filter(s => !s.enrolled.includes(user?.name || '') && !s.isFrozen);
 
@@ -126,13 +136,22 @@ export const StudentDashboard = () => {
                           )}
                           <span className={`font-bold ${quiz.isAttempted ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{quiz.title}</span>
                         </div>
-                        {quiz.isAttempted ? (
-                          <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
-                        ) : (
-                          <button onClick={() => navigate(`/student/quiz/${quiz.id}`)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center">
-                            <Play size={12} className="mr-1.5 fill-current" /> Take Quiz
+                        <div className="flex items-center gap-3">
+                          {quiz.isAttempted ? (
+                            <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
+                          ) : (
+                            <button onClick={() => navigate(`/student/quiz/${quiz.id}`)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center">
+                              <Play size={12} className="mr-1.5 fill-current" /> Take Quiz
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => handleShare(quiz.id)}
+                            title="Share Quiz Link"
+                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          >
+                            <Share2 size={16} />
                           </button>
-                        )}
+                        </div>
                       </div>
                     ))
                   ) : (

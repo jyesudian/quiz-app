@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, Plus, Languages, BrainCircuit, Trash2 } from 'lucide-react';
+import { ChevronRight, Plus, Languages, BrainCircuit, Trash2, Share2, Copy, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -20,6 +20,10 @@ export const CreateQuiz = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [createdQuizId, setCreatedQuizId] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -196,7 +200,12 @@ export const CreateQuiz = () => {
       }
 
       toast.success(id ? 'Quiz updated successfully!' : 'Quiz created successfully!');
-      navigate('/admin');
+      if (status === 'published') {
+        setCreatedQuizId(quizId);
+        setShowShareModal(true);
+      } else {
+        navigate('/admin');
+      }
     } catch (err: any) {
       toast.error('Failed to save quiz: ' + err.message);
     } finally {
@@ -334,6 +343,66 @@ export const CreateQuiz = () => {
           <Plus size={20} className="mr-2" /> Add Another Question
         </button>
       </div>
+
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/55 flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-blue-50 relative animate-scale-in">
+            <h3 className="text-2xl font-black text-blue-900 mb-2 flex items-center gap-2">
+              <Share2 className="text-blue-600" /> Share Quiz
+            </h3>
+            <p className="text-gray-600 text-sm mb-6">
+              Your quiz has been published successfully! Copy the link below to share it with your students.
+            </p>
+            
+            <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-2xl border border-gray-200 mb-6">
+              <input 
+                type="text" 
+                readOnly 
+                value={`${window.location.origin}/student/quiz/${createdQuizId}`} 
+                className="bg-transparent text-sm text-gray-800 font-medium flex-1 outline-none select-all"
+              />
+              <button 
+                onClick={async () => {
+                  const shareUrl = `${window.location.origin}/student/quiz/${createdQuizId}`;
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    setCopied(true);
+                    toast.success('Quiz link copied!');
+                    setTimeout(() => setCopied(false), 2000);
+                  } catch (err) {
+                    toast.error('Failed to copy link');
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  copied 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-blue-800 hover:bg-blue-900 text-white'
+                }`}
+              >
+                {copied ? (
+                  <>
+                    <Check size={14} /> Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} /> Copy Link
+                  </>
+                )}
+              </button>
+            </div>
+            
+            <button 
+              onClick={() => {
+                setShowShareModal(false);
+                navigate('/admin');
+              }}
+              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-gray-700 rounded-xl text-sm font-bold transition-colors"
+            >
+              Done / Return to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
