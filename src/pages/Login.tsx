@@ -57,8 +57,8 @@ export const Login = () => {
             <Book size={48} className="text-blue-800" />
           </div>
         </div>
-        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-tight">Grace Quiz Portal</h2>
-        <p className="mt-2 text-center text-blue-100 font-medium">Grow in faith, word by word.</p>
+        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-tight">Daat</h2>
+        <p className="mt-2 text-center text-blue-100 font-medium">Grow in the grace and knowledge of our Lord and Savior Jesus Christ</p>
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md relative z-10">

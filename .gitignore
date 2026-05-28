@@ -38,3 +38,8 @@ Thumbs.db
 
 # coverage
 coverage/
+
+# Logs and traffic dumps
+network-logs
+network-logs*
+*.log
