@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Book, Mail, Lock } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import { Logo } from '../components/Logo';
 
 export const Login = () => {
   const [isAdminLogin, setIsAdminLogin] = useState(false);
@@ -48,17 +49,21 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-96 bg-blue-900 rounded-b-[40%] shadow-2xl opacity-90 transform -translate-y-20"></div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Decorative ambient glowing blobs */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none"></div>
       
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="flex justify-center mb-6">
-          <div className="bg-white p-4 rounded-full shadow-lg border-4 border-blue-100">
-            <Book size={48} className="text-blue-800" />
+          <div className="bg-slate-900/40 backdrop-blur-md p-4 rounded-3xl shadow-2xl border border-white/10 flex items-center justify-center">
+            <Logo size={80} />
           </div>
         </div>
-        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-tight">Daat</h2>
-        <p className="mt-2 text-center text-blue-100 font-medium">Grow in the grace and knowledge of our Lord and Savior Jesus Christ</p>
+        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-wider">Daat</h2>
+        <p className="mt-3 text-center text-blue-100/90 font-medium text-sm sm:text-base px-4 leading-relaxed max-w-sm mx-auto">
+          Grow in the grace and knowledge of our Lord and Savior Jesus Christ
+        </p>
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md relative z-10">

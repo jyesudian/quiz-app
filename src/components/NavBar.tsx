@@ -1,6 +1,7 @@
-import { Book, Shield, User, LogOut } from 'lucide-react';
+import { Shield, User, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { Logo } from './Logo';
 
 export const NavBar = () => {
   const { user, signOut } = useAuth();
@@ -16,7 +17,7 @@ export const NavBar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
-            <Book className="h-8 w-8 text-blue-800" />
+            <Logo size={36} className="text-blue-800" />
             <span className="ml-3 text-xl font-extrabold text-blue-900 tracking-tight">Daat</span>
           </div>
           <div className="flex items-center">
