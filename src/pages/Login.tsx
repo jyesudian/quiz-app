@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Shield, User } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { Logo } from '../components/Logo';
@@ -54,6 +54,32 @@ export const Login = () => {
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none"></div>
       
+      {/* Admin/Student Toggle Button in Top Right */}
+      <div className="absolute top-6 right-6 z-20">
+        <button
+          onClick={() => {
+            setIsAdminLogin(!isAdminLogin);
+            // Clear any admin form entries when toggling
+            setAdminEmail('');
+            setAdminPassword('');
+          }}
+          className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white font-semibold px-4 py-2.5 rounded-xl border border-white/15 transition-all cursor-pointer shadow-lg text-sm backdrop-blur-sm"
+          title={isAdminLogin ? "Go to Student Portal" : "Go to Admin Login"}
+        >
+          {isAdminLogin ? (
+            <>
+              <User size={16} className="text-blue-300" />
+              <span>Student Portal</span>
+            </>
+          ) : (
+            <>
+              <Shield size={16} className="text-amber-400" />
+              <span>Admin Login</span>
+            </>
+          )}
+        </button>
+      </div>
+      
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="flex justify-center mb-6">
           <div className="bg-slate-900/40 backdrop-blur-md p-4 rounded-3xl shadow-2xl border border-white/10 flex items-center justify-center">
@@ -61,27 +87,22 @@ export const Login = () => {
           </div>
         </div>
         <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-wider">Daat</h2>
-        <p className="mt-3 text-center text-blue-100/90 font-medium text-sm sm:text-base px-4 leading-relaxed max-w-sm mx-auto">
-          Grow in the grace and knowledge of our Lord and Savior Jesus Christ
-        </p>
+        {isAdminLogin ? (
+          <p className="mt-3 text-center text-amber-400 font-semibold text-sm sm:text-base px-4 uppercase tracking-widest">
+            Admin & Teacher Portal
+          </p>
+        ) : (
+          <p className="mt-3 text-center text-blue-100/90 font-medium text-sm sm:text-base px-4 leading-relaxed max-w-sm mx-auto">
+            Grow in the grace and knowledge of our Lord and Savior Jesus Christ
+          </p>
+        )}
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="bg-white py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10 border border-gray-100">
-          <div className="flex justify-center space-x-4 mb-8">
-            <button 
-              onClick={() => setIsAdminLogin(false)} 
-              className={`pb-2 px-4 text-sm font-bold transition-all ${!isAdminLogin ? 'border-b-4 border-blue-600 text-blue-900' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              Student Portal
-            </button>
-            <button 
-              onClick={() => setIsAdminLogin(true)} 
-              className={`pb-2 px-4 text-sm font-bold transition-all ${isAdminLogin ? 'border-b-4 border-blue-600 text-blue-900' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              Admin/Teacher
-            </button>
-          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">
+            {isAdminLogin ? 'Admin Sign In' : 'Student Sign In'}
+          </h3>
 
           {!isAdminLogin ? (
             <div className="space-y-6">
