@@ -102,6 +102,7 @@ export const StudentLeaderboard = () => {
           <div>
             <h2 className="text-2xl font-bold flex items-center"><Trophy className="mr-3 text-yellow-400" /> Leaderboard</h2>
             <p className="text-blue-200 mt-1">{series?.title} • {series?.group_name}</p>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
