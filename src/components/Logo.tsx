@@ -18,7 +18,7 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 48 }) => {
       {/* Ambient glow in background */}
       <circle cx="50" cy="50" r="42" fill="url(#logo-glow)" opacity="0.15" />
       
-      {/* Light Rays (Knowledge / Illumination / Daat) */}
+      {/* Light Rays (Knowledge / Illumination / Da'at) */}
       <g stroke="url(#gold-gradient)" strokeWidth="2.5" strokeLinecap="round" opacity="0.9">
         <line x1="50" y1="20" x2="50" y2="10" />
         <line x1="32" y1="26" x2="24" y2="18" />

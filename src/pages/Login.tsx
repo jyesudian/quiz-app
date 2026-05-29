@@ -86,16 +86,10 @@ export const Login = () => {
             <Logo size={80} />
           </div>
         </div>
-        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-wider">Daat</h2>
-        {isAdminLogin ? (
-          <p className="mt-3 text-center text-amber-400 font-semibold text-sm sm:text-base px-4 uppercase tracking-widest">
-            Admin & Teacher Portal
-          </p>
-        ) : (
-          <p className="mt-3 text-center text-blue-100/90 font-medium text-sm sm:text-base px-4 leading-relaxed max-w-sm mx-auto">
-            Grow in the grace and knowledge of our Lord and Savior Jesus Christ
-          </p>
-        )}
+        <h2 className="mt-2 text-center text-4xl font-extrabold text-white tracking-wider">Da'at</h2>
+        <p className="mt-3 text-center text-blue-100/90 font-medium text-sm sm:text-base px-4 leading-relaxed max-w-sm mx-auto">
+          Grow in the grace and knowledge of our Lord and Savior Jesus Christ
+        </p>
       </div>
 
       <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-md relative z-10">

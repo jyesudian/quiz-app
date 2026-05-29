@@ -18,7 +18,7 @@ export const NavBar = () => {
         <div className="flex justify-between h-16">
           <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
             <Logo size={36} className="text-blue-800" />
-            <span className="ml-3 text-xl font-extrabold text-blue-900 tracking-tight">Daat</span>
+            <span className="ml-3 text-xl font-extrabold text-blue-900 tracking-tight">Da'at</span>
           </div>
           <div className="flex items-center">
             {user && (
