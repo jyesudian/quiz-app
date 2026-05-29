@@ -308,63 +308,65 @@ export const AdminDashboard = () => {
            {isLeaderboardLoading ? (
              <div className="p-8 text-center text-gray-500">Loading rankings...</div>
            ) : (
-             <table className="min-w-full divide-y divide-gray-200">
-               <thead className="bg-gray-50">
-                 <tr>
-                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Rank</th>
-                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Student</th>
-                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Score</th>
-                 </tr>
-               </thead>
-               <tbody className="bg-white divide-y divide-gray-100">
-                  {leaderboardData.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-gray-500">
-                        No scores recorded for this series yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    leaderboardData.map((entry: any, idx: any) => {
-                      const isExpanded = expandedUserId === entry.user_id;
-                      return (
-                        <Fragment key={idx}>
-                          <tr 
-                            onClick={() => handleRowClick(entry.user_id)}
-                            className={`cursor-pointer transition-all hover:bg-gray-50 ${isExpanded ? 'bg-blue-50/10' : ''}`}
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">#{entry.rank}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{entry.name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap font-bold text-blue-700">{entry.score} / {entry.out_of}</td>
-                          </tr>
-                          {isExpanded && (
-                            <tr className="bg-slate-50/30">
-                              <td colSpan={3} className="px-12 py-4 border-t border-gray-100 bg-slate-50/50">
-                                <div className="max-w-md space-y-2">
-                                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quiz Breakdown</h4>
-                                  {isBreakdownLoading ? (
-                                    <div className="text-xs text-gray-400 italic">Loading breakdown...</div>
-                                  ) : expandedBreakdown.length === 0 ? (
-                                    <div className="text-xs text-gray-400 italic">No quizzes found in this series.</div>
-                                  ) : (
-                                    expandedBreakdown.map((b: any) => (
-                                      <div key={b.quiz_id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100">
-                                        <span className="text-gray-600">{b.quiz_title}</span>
-                                        <span className="font-semibold text-gray-800">
-                                          {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
-                                        </span>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </td>
+             <div className="overflow-x-auto">
+               <table className="min-w-full divide-y divide-gray-200">
+                 <thead className="bg-gray-50">
+                   <tr>
+                     <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Rank</th>
+                     <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Student</th>
+                     <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Score</th>
+                   </tr>
+                 </thead>
+                 <tbody className="bg-white divide-y divide-gray-100">
+                    {leaderboardData.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-4 sm:px-6 py-8 text-center text-gray-500">
+                          No scores recorded for this series yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      leaderboardData.map((entry: any, idx: any) => {
+                        const isExpanded = expandedUserId === entry.user_id;
+                        return (
+                          <Fragment key={idx}>
+                            <tr 
+                              onClick={() => handleRowClick(entry.user_id)}
+                              className={`cursor-pointer transition-all hover:bg-gray-50 ${isExpanded ? 'bg-blue-50/10' : ''}`}
+                            >
+                              <td className="px-4 sm:px-6 py-4 whitespace-nowrap font-bold text-gray-900">#{entry.rank}</td>
+                              <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{entry.name}</td>
+                              <td className="px-4 sm:px-6 py-4 whitespace-nowrap font-bold text-blue-700">{entry.score} / {entry.out_of}</td>
                             </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })
-                  )}
-               </tbody>
-             </table>
+                            {isExpanded && (
+                              <tr className="bg-slate-50/30">
+                                <td colSpan={3} className="px-6 sm:px-12 py-4 border-t border-gray-100 bg-slate-50/50">
+                                  <div className="max-w-md space-y-2">
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quiz Breakdown</h4>
+                                    {isBreakdownLoading ? (
+                                      <div className="text-xs text-gray-400 italic">Loading breakdown...</div>
+                                    ) : expandedBreakdown.length === 0 ? (
+                                      <div className="text-xs text-gray-400 italic">No quizzes found in this series.</div>
+                                    ) : (
+                                      expandedBreakdown.map((b: any) => (
+                                        <div key={b.quiz_id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100">
+                                          <span className="text-gray-600">{b.quiz_title}</span>
+                                          <span className="font-semibold text-gray-800">
+                                            {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
+                                          </span>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })
+                    )}
+                 </tbody>
+               </table>
+             </div>
            )}
          </div>
       )}

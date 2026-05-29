@@ -102,66 +102,67 @@ export const StudentLeaderboard = () => {
           <div>
             <h2 className="text-2xl font-bold flex items-center"><Trophy className="mr-3 text-yellow-400" /> Leaderboard</h2>
             <p className="text-blue-200 mt-1">{series?.title} • {series?.group_name}</p>
-          </div>
         </div>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Rank</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Student</th>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Score</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
-            {leaderboard.length === 0 ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-center text-gray-500">
-                  No scores recorded for this series yet.
-                </td>
+                <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Rank</th>
+                <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Student</th>
+                <th className="px-4 sm:px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase">Score</th>
               </tr>
-            ) : (
-              leaderboard.map((entry: any, idx: any) => {
-                const isCurrentUser = user && entry.name === user.name;
-                const isExpanded = expandedUserId === entry.user_id;
-                return (
-                  <Fragment key={idx}>
-                    <tr 
-                      onClick={() => handleRowClick(entry.user_id)} 
-                      className={`cursor-pointer transition-all ${isCurrentUser ? 'bg-blue-50/50 border-l-4 border-blue-500' : 'hover:bg-gray-50'} ${isExpanded ? 'bg-blue-50/10' : ''}`}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-900">#{entry.rank}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{entry.name} {isCurrentUser && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">You</span>}</td>
-                      <td className="px-6 py-4 whitespace-nowrap font-bold text-blue-700">{entry.score} / {entry.out_of}</td>
-                    </tr>
-                    {isExpanded && (
-                      <tr className="bg-slate-50/30">
-                        <td colSpan={3} className="px-12 py-4 border-t border-gray-100 bg-slate-50/50">
-                          <div className="max-w-md space-y-2">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quiz Breakdown</h4>
-                            {isBreakdownLoading ? (
-                              <div className="text-xs text-gray-400 italic">Loading breakdown...</div>
-                            ) : expandedBreakdown.length === 0 ? (
-                              <div className="text-xs text-gray-400 italic">No quizzes found in this series.</div>
-                            ) : (
-                              expandedBreakdown.map((b: any) => (
-                                <div key={b.quiz_id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100">
-                                  <span className="text-gray-600">{b.quiz_title}</span>
-                                  <span className="font-semibold text-gray-800">
-                                    {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
-                                  </span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </td>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {leaderboard.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 sm:px-6 py-8 text-center text-gray-500">
+                    No scores recorded for this series yet.
+                  </td>
+                </tr>
+              ) : (
+                leaderboard.map((entry: any, idx: any) => {
+                  const isCurrentUser = user && entry.name === user.name;
+                  const isExpanded = expandedUserId === entry.user_id;
+                  return (
+                    <Fragment key={idx}>
+                      <tr 
+                        onClick={() => handleRowClick(entry.user_id)} 
+                        className={`cursor-pointer transition-all ${isCurrentUser ? 'bg-blue-50/50 border-l-4 border-blue-500' : 'hover:bg-gray-50'} ${isExpanded ? 'bg-blue-50/10' : ''}`}
+                      >
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap font-bold text-gray-900">#{entry.rank}</td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{entry.name} {isCurrentUser && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">You</span>}</td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap font-bold text-blue-700">{entry.score} / {entry.out_of}</td>
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/30">
+                          <td colSpan={3} className="px-6 sm:px-12 py-4 border-t border-gray-100 bg-slate-50/50">
+                            <div className="max-w-md space-y-2">
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quiz Breakdown</h4>
+                              {isBreakdownLoading ? (
+                                <div className="text-xs text-gray-400 italic">Loading breakdown...</div>
+                              ) : expandedBreakdown.length === 0 ? (
+                                <div className="text-xs text-gray-400 italic">No quizzes found in this series.</div>
+                              ) : (
+                                expandedBreakdown.map((b: any) => (
+                                  <div key={b.quiz_id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-600">{b.quiz_title}</span>
+                                    <span className="font-semibold text-gray-800">
+                                      {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
