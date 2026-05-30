@@ -81,12 +81,7 @@ export const QuizResults: React.FC = () => {
 
         // 3. Fetch user's latest attempt for this quiz
         const { data: attempts, error: attemptError } = await supabase
-          .from('quiz_attempts')
-          .select('*')
-          .eq('quiz_id', quizId)
-          .eq('user_id', targetUserId)
-          .order('completed_at', { ascending: false })
-          .limit(1);
+          .rpc('get_quiz_attempt', { quiz_id_param: parseInt(quizId), user_id_param: targetUserId });
 
         if (attemptError) throw attemptError;
         if (!attempts || attempts.length === 0) {
@@ -105,7 +100,7 @@ export const QuizResults: React.FC = () => {
           .order('position', { ascending: true });
 
         if (qError) throw qError;
-
+ 
         if (questionsData) {
           const mappedQuestions = questionsData.map((q: any) => ({
             id: q.id,
@@ -120,16 +115,16 @@ export const QuizResults: React.FC = () => {
               isCorrect: opt.is_correct
             }))
           }));
+          console.log('Mapped questions:', mappedQuestions);
           setQuestions(mappedQuestions);
         }
-
+ 
         // 5. Fetch user's answers for this attempt
         const { data: answersData, error: aError } = await supabase
-          .from('user_answers')
-          .select('*')
-          .eq('attempt_id', attemptData.id);
-
+          .rpc('get_attempt_answers', { attempt_id_param: attemptData.id });
+ 
         if (aError) throw aError;
+        console.log('Fetched user answers for attempt_id:', attemptData.id, answersData);
         setAnswers(answersData || []);
 
         // 6. Fetch overall rank from the series leaderboard
