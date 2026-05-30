@@ -142,7 +142,7 @@ export const QuizResults: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Error fetching quiz results:', err);
-        toast.error('Failed to load quiz results details.');
+        toast.error('Failed to load quiz results: ' + (err.message || err));
         navigate(-1);
       } finally {
         setIsLoading(false);
