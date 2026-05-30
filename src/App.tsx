@@ -8,6 +8,7 @@ import { CreateQuiz } from './pages/CreateQuiz';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { TakeQuiz } from './pages/TakeQuiz';
 import { StudentLeaderboard } from './pages/StudentLeaderboard';
+import { QuizResults } from './pages/QuizResults';
 import { useAuth } from './contexts/AuthContext';
 
 const RootRedirect = () => {
@@ -48,6 +49,10 @@ export default function App() {
         <Route path="/student" element={<StudentDashboard />} />
         <Route path="/student/quiz/:quizId" element={<TakeQuiz />} />
         <Route path="/student/leaderboard/:seriesId" element={<StudentLeaderboard />} />
+      </Route>
+
+      <Route element={<MainLayout />}>
+        <Route path="/quiz-results/:quizId/:userId?" element={<QuizResults />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

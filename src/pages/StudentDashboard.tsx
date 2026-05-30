@@ -138,7 +138,12 @@ export const StudentDashboard = () => {
                         </div>
                         <div className="flex items-center gap-3">
                           {quiz.isAttempted ? (
-                            <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
+                            <div className="flex items-center gap-2">
+                              <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
+                              <button onClick={() => navigate(`/quiz-results/${quiz.id}`)} className="bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs px-3 py-1.5 rounded-lg font-bold border border-blue-200 transition-colors cursor-pointer">
+                                View Results
+                              </button>
+                            </div>
                           ) : (
                             <button onClick={() => navigate(`/student/quiz/${quiz.id}`)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center">
                               <Play size={12} className="mr-1.5 fill-current" /> Take Quiz

@@ -350,9 +350,19 @@ export const AdminDashboard = () => {
                                       expandedBreakdown.map((b: any) => (
                                         <div key={b.quiz_id} className="flex justify-between items-center text-sm py-1.5 border-b border-gray-100">
                                           <span className="text-gray-600">{b.quiz_title}</span>
-                                          <span className="font-semibold text-gray-800">
-                                            {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
-                                          </span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-gray-800">
+                                              {b.score !== null ? `${b.score} / ${b.max_score}` : 'Not attempted'}
+                                            </span>
+                                            {b.score !== null && (
+                                              <button 
+                                                onClick={() => navigate(`/quiz-results/${b.quiz_id}/${entry.user_id}`)}
+                                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-bold cursor-pointer"
+                                              >
+                                                View Answers
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
                                       ))
                                     )}
