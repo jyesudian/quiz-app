@@ -232,7 +232,7 @@ export const QuizResults: React.FC = () => {
       yOffset += 8;
 
       questions.forEach((question, index) => {
-        const studentAns = answers.find(ans => ans.question_id === question.id);
+        const studentAns = answers.find(ans => String(ans.question_id) === String(question.id));
         
         // Check Page Boundaries
         if (yOffset > 250) {
@@ -424,7 +424,7 @@ export const QuizResults: React.FC = () => {
 
       <div className="space-y-6">
         {questions.map((question, index) => {
-          const studentAns = answers.find(ans => ans.question_id === question.id);
+          const studentAns = answers.find(ans => String(ans.question_id) === String(question.id));
           const pointsAwarded = studentAns ? studentAns.ai_score : 0;
           const maxPoints = question.type === 'text' ? 2 : 1;
           const isCorrect = studentAns ? studentAns.is_correct : false;
