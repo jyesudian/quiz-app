@@ -139,16 +139,25 @@ export const TakeQuiz = () => {
             });
             
             if (error) throw error;
-            if (data && data.score) {
-              aiScore = Math.min(1, Math.max(0, data.score / 10)); // Normalize 0-10 to 0-1 for now, or just use out of 10
-              // Actually, let's make maxScore for text question 10
-              maxScore += 9; // Since we already added 1 to maxScore
-              totalScore += data.score;
-              aiScore = data.score;
+            if (data && typeof data.score === 'number') {
+              const scoreTen = data.score;
+              let points = 0;
+              if (scoreTen >= 7.5) {
+                points = 2;
+              } else if (scoreTen >= 3.5) {
+                points = 1;
+              } else if (scoreTen >= 2.0) {
+                points = 0.5;
+              }
+              // Since maxScore initialized to questions.length (adds 1 point per question),
+              // we add 1 more point to make the max score for this text question 2.
+              maxScore += 1;
+              totalScore += points;
+              aiScore = points;
             }
           } catch (aiErr) {
             console.error('AI Grading failed for question', q.id, aiErr);
-            // Default to 0 if fails, or mark for manual review (not implemented)
+            // Default to 0 if fails
           }
 
           processedAnswers.push({
@@ -156,7 +165,7 @@ export const TakeQuiz = () => {
             selected_option_id: null,
             text_answer: studentAnswer || '',
             ai_score: aiScore,
-            is_correct: aiScore > (10 * 0.7) // Arbitrary threshold
+            is_correct: aiScore === 2
           });
         }
       }

@@ -305,11 +305,11 @@ export const QuizResults: React.FC = () => {
 
         // Score Status
         const pointsAwarded = studentAns ? studentAns.ai_score : 0;
-        const maxPoints = question.type === 'text' ? 10 : 1;
+        const maxPoints = question.type === 'text' ? 2 : 1;
         const isCorrect = studentAns ? studentAns.is_correct : false;
 
         doc.setFont('Helvetica', 'bold');
-        if (isCorrect || (question.type === 'text' && pointsAwarded >= 7)) {
+        if (isCorrect || (question.type === 'text' && pointsAwarded === 2)) {
           doc.setTextColor(22, 101, 52); // green-800
           doc.text(`Grading: Correct (${pointsAwarded}/${maxPoints} pts)`, 18, yOffset);
         } else if (pointsAwarded > 0) {
@@ -421,7 +421,7 @@ export const QuizResults: React.FC = () => {
         {questions.map((question, index) => {
           const studentAns = answers.find(ans => ans.question_id === question.id);
           const pointsAwarded = studentAns ? studentAns.ai_score : 0;
-          const maxPoints = question.type === 'text' ? 10 : 1;
+          const maxPoints = question.type === 'text' ? 2 : 1;
           const isCorrect = studentAns ? studentAns.is_correct : false;
 
           // Determine Card Styles based on correctness
@@ -430,7 +430,7 @@ export const QuizResults: React.FC = () => {
           let statusText = 'Unanswered';
 
           if (studentAns) {
-            if (isCorrect || (question.type === 'text' && pointsAwarded >= 7)) {
+            if (isCorrect || (question.type === 'text' && pointsAwarded === 2)) {
               borderStyle = 'border-green-300 bg-green-50/10';
               badgeStyle = 'bg-green-100 text-green-800';
               statusText = 'Correct';
