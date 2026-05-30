@@ -247,34 +247,52 @@ export const QuizResults: React.FC = () => {
         doc.setFont('Helvetica', 'normal');
         doc.setFontSize(10);
 
-        if (question.type === 'single') {
-          const selectedOption = question.options.find(o => o.id === studentAns?.selected_option_id);
-          const correctOption = question.options.find(o => o.isCorrect);
+        if (question.type === 'single' || question.type === 'multiple') {
+          question.options.forEach((opt) => {
+            if (yOffset > 270) {
+              doc.addPage();
+              yOffset = 20;
+            }
 
-          doc.text(`Your Answer: ${selectedOption ? selectedOption.en : 'Unanswered'}`, 18, yOffset);
-          yOffset += 5;
-          doc.text(`Correct Answer: ${correctOption ? correctOption.en : 'N/A'}`, 18, yOffset);
-          yOffset += 5;
-        } else if (question.type === 'multiple') {
-          let selectedIds: number[] = [];
-          try {
-            selectedIds = JSON.parse(studentAns?.text_answer || '[]');
-          } catch {
-            selectedIds = [];
-          }
-          const selectedOptions = question.options.filter(o => selectedIds.includes(o.id));
-          const correctOptions = question.options.filter(o => o.isCorrect);
+            let isSelected = false;
+            if (question.type === 'single') {
+              isSelected = studentAns?.selected_option_id === opt.id;
+            } else {
+              let selectedIds: number[] = [];
+              try {
+                selectedIds = JSON.parse(studentAns?.text_answer || '[]');
+              } catch {
+                selectedIds = [];
+              }
+              isSelected = selectedIds.includes(opt.id);
+            }
 
-          const selText = selectedOptions.map(o => o.en).join(', ') || 'Unanswered';
-          const corrText = correctOptions.map(o => o.en).join(', ');
+            const isOptCorrect = opt.isCorrect;
 
-          const wrappedSelText = doc.splitTextToSize(`Your Answer: ${selText}`, 170);
-          doc.text(wrappedSelText, 18, yOffset);
-          yOffset += (wrappedSelText.length * 5);
+            let prefix = '[ ] ';
+            if (isSelected) {
+              prefix = '[x] ';
+            }
 
-          const wrappedCorrText = doc.splitTextToSize(`Correct Answer: ${corrText}`, 170);
-          doc.text(wrappedCorrText, 18, yOffset);
-          yOffset += (wrappedCorrText.length * 5);
+            let suffix = '';
+            if (isOptCorrect) {
+              suffix = ' (Correct)';
+              doc.setTextColor(22, 101, 52); // green-800
+              doc.setFont('Helvetica', 'bold');
+            } else if (isSelected && !isOptCorrect) {
+              suffix = ' (Incorrect)';
+              doc.setTextColor(153, 27, 27); // red-800
+              doc.setFont('Helvetica', 'bold');
+            } else {
+              doc.setTextColor(71, 85, 105); // slate-600
+              doc.setFont('Helvetica', 'normal');
+            }
+
+            const optionLines = doc.splitTextToSize(`${prefix}${opt.en}${suffix}`, 170);
+            doc.text(optionLines, 18, yOffset);
+            yOffset += (optionLines.length * 5);
+          });
+          yOffset += 2;
         } else if (question.type === 'text') {
           const wrappedAns = doc.splitTextToSize(`Your Answer: ${studentAns?.text_answer || 'Unanswered'}`, 170);
           doc.text(wrappedAns, 18, yOffset);
@@ -368,7 +386,7 @@ export const QuizResults: React.FC = () => {
       </div>
 
       {/* Score Grid & Rank Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {/* Score Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 flex items-center justify-between">
           <div>
@@ -390,17 +408,6 @@ export const QuizResults: React.FC = () => {
           </div>
           <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600">
             <Trophy size={28} />
-          </div>
-        </div>
-
-        {/* Portal Info Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 flex items-center justify-between">
-          <div>
-            <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Portal</h3>
-            <p className="text-2xl font-black text-gray-800 mt-2">Da'at</p>
-          </div>
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-500 text-xs font-bold font-serif italic text-center leading-none">
-            Grow in<br />Grace
           </div>
         </div>
       </div>
