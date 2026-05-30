@@ -55,41 +55,46 @@ export const QuizResults: React.FC = () => {
         setIsLoading(true);
 
         // 1. Fetch Student Profile (needed for name/email if viewing another student or for report details)
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profiles, error: profileError } = await supabase
           .from('profiles')
           .select('full_name, email')
-          .eq('id', targetUserId)
-          .single();
+          .eq('id', targetUserId);
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Profile query error:', profileError);
+        }
+        const profileData = profiles && profiles.length > 0 ? profiles[0] : { full_name: 'Student', email: 'N/A' };
         setStudentProfile(profileData);
 
         // 2. Fetch Quiz metadata (and Series title)
-        const { data: quizData, error: quizError } = await supabase
+        const { data: quizzes, error: quizError } = await supabase
           .from('quizzes')
           .select(`*, quiz_series(*)`)
-          .eq('id', quizId)
-          .single();
+          .eq('id', quizId);
 
         if (quizError) throw quizError;
+        if (!quizzes || quizzes.length === 0) {
+          throw new Error('Quiz not found or access denied.');
+        }
+        const quizData = quizzes[0];
         setQuiz(quizData);
 
         // 3. Fetch user's latest attempt for this quiz
-        const { data: attemptData, error: attemptError } = await supabase
+        const { data: attempts, error: attemptError } = await supabase
           .from('quiz_attempts')
           .select('*')
           .eq('quiz_id', quizId)
           .eq('user_id', targetUserId)
           .order('completed_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
         if (attemptError) throw attemptError;
-        if (!attemptData) {
+        if (!attempts || attempts.length === 0) {
           toast.error('No attempt records found for this quiz.');
           navigate(-1);
           return;
         }
+        const attemptData = attempts[0];
         setAttempt(attemptData);
 
         // 4. Fetch questions and options
