@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3, Share2 } from 'lucide-react';
+import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3, Share2, Trash2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -181,6 +181,27 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteQuiz = async (quizId: number) => {
+    if (!window.confirm("Are you sure you want to delete this quiz? This will permanently delete all questions, options, attempts, student marks, and leaderboard records for this quiz.")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('quizzes')
+        .delete()
+        .eq('id', quizId);
+
+      if (error) throw error;
+
+      toast.success('Quiz deleted successfully');
+      fetchDashboardData();
+    } catch (err: any) {
+      toast.error('Error deleting quiz: ' + err.message);
+      console.error(err);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
@@ -248,8 +269,11 @@ export const AdminDashboard = () => {
                                   <Share2 size={14} className="mr-1" /> Share
                                 </button>
                               )}
-                              <button onClick={() => navigate(`/admin/edit-quiz/${quiz.id}`)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold">
+                              <button onClick={() => navigate(`/admin/edit-quiz/${quiz.id}`)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold cursor-pointer">
                                 <Edit3 size={14} className="mr-1" /> Edit
+                              </button>
+                              <button onClick={() => handleDeleteQuiz(quiz.id)} className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1.5 rounded transition-colors flex items-center text-xs font-bold cursor-pointer">
+                                <Trash2 size={14} className="mr-1" /> Delete
                               </button>
                             </div>
                           </div>
