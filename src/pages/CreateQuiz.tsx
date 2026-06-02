@@ -281,7 +281,8 @@ export const CreateQuiz = () => {
         quizId = parseInt(id);
         const { error: quizUpdateError } = await supabase.from('quizzes').update({ series_id: seriesId, title: quizTitle, status: status }).eq('id', quizId);
         if (quizUpdateError) throw quizUpdateError;
-        await supabase.from('questions').delete().eq('quiz_id', quizId);
+        const { error: deleteError } = await supabase.from('questions').delete().eq('quiz_id', quizId);
+        if (deleteError) throw deleteError;
       } else {
         const { data: newQuiz, error: quizInsertError } = await supabase.from('quizzes').insert({ series_id: seriesId, title: quizTitle, status: status }).select().single();
         if (quizInsertError) throw quizInsertError;
