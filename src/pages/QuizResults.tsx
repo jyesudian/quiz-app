@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,8 +47,8 @@ export const QuizResults: React.FC = () => {
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const [rank, setRank] = useState<string>('N/A');
   const [studentProfile, setStudentProfile] = useState<any>(null);
-  const [isGrading, setIsGrading] = useState(false);
   const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const gradingInProgressRef = useRef(false);
 
   // Determine whose results we are viewing
   const targetUserId = userId || currentUser?.id;
@@ -87,7 +87,12 @@ export const QuizResults: React.FC = () => {
 
         // 3. Fetch user's latest attempt for this quiz
         const { data: attempts, error: attemptError } = await supabase
-          .rpc('get_quiz_attempt', { quiz_id_param: parseInt(quizId), user_id_param: targetUserId });
+          .from('quiz_attempts')
+          .select('*')
+          .eq('quiz_id', parseInt(quizId))
+          .eq('user_id', targetUserId)
+          .order('completed_at', { ascending: false })
+          .limit(1);
 
         if (attemptError) throw attemptError;
         if (!attempts || attempts.length === 0) {
@@ -163,18 +168,18 @@ export const QuizResults: React.FC = () => {
 
   useEffect(() => {
     const runGrading = async () => {
-      if (attempt && !attempt.is_graded && !isGrading) {
-        setIsGrading(true);
+      if (attempt && !attempt.is_graded && !gradingInProgressRef.current) {
+        gradingInProgressRef.current = true;
         const success = await gradeAttempt(attempt.id);
         if (success) {
           toast.success("AI grading complete!");
           setRefetchTrigger(prev => prev + 1);
         }
-        setIsGrading(false);
+        gradingInProgressRef.current = false;
       }
     };
     runGrading();
-  }, [attempt, isGrading]);
+  }, [attempt?.id, attempt?.is_graded]);
 
   const handleDownloadPDF = () => {
     if (!quiz || !attempt || !studentProfile) return;
