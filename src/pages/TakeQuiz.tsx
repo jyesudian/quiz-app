@@ -59,6 +59,7 @@ export const TakeQuiz = () => {
             textEn: q.text_en,
             textTa: q.text_ta || '',
             aiRubric: q.ai_rubric || '', // Hidden from student, but needed for submission reference
+            imageUrl: q.image_url || '',
             options: (q.question_options || []).map((opt: any) => ({
               id: opt.id,
               en: opt.text_en,
