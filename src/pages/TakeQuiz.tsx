@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import type { Question } from '../types';
+import { gradeAttempt } from '../utils/evaluator';
 
 export const TakeQuiz = () => {
   const { quizId } = useParams<{ quizId: string }>();
@@ -149,6 +150,7 @@ export const TakeQuiz = () => {
       let maxScore = questions.length; // 1 point per question for now
 
       const processedAnswers = [];
+      const hasAiQuestions = questions.some(q => q.type === 'text' || q.type === 'picture');
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
@@ -188,47 +190,15 @@ export const TakeQuiz = () => {
             is_correct: isCorrect
           });
           totalScore += score;
-        } else if (q.type === 'text') {
-          // Call Edge Function for AI Grading
-          let aiScore = 0;
-          try {
-            const { data, error } = await supabase.functions.invoke('grade-answer', {
-              body: {
-                studentAnswer: studentAnswer || '',
-                aiRubric: q.aiRubric,
-                questionEn: q.textEn
-              }
-            });
-            
-            if (error) throw error;
-            if (data && typeof data.score === 'number') {
-              const scoreTen = data.score;
-              let points = 0;
-              if (scoreTen >= 7.5) {
-                points = 2;
-              } else if (scoreTen >= 3.5) {
-                points = 1;
-              } else if (scoreTen >= 2.0) {
-                points = 0.5;
-              }
-              // Since maxScore initialized to questions.length (adds 1 point per question),
-              // we add 1 more point to make the max score for this text question 2.
-              maxScore += 1;
-              totalScore += points;
-              aiScore = points;
-            }
-          } catch (aiErr) {
-            console.error('AI Grading failed for question', q.id, aiErr);
-            // Default to 0 if fails
-          }
-
+        } else if (q.type === 'text' || q.type === 'picture') {
           processedAnswers.push({
             question_id: q.id,
             selected_option_id: null,
             text_answer: studentAnswer || '',
-            ai_score: aiScore,
-            is_correct: aiScore === 2
+            ai_score: 0,
+            is_correct: false
           });
+          maxScore += 1;
         } else if (q.type === 'match') {
           const studentMatches = answers[i] || {};
           let correctMatchesCount = 0;
@@ -243,7 +213,6 @@ export const TakeQuiz = () => {
           const points = correctMatchesCount * 0.5;
           const maxPointsForQ = q.options.length * 0.5;
 
-          // Adjust max score for this question (questions.length initially assumed 1 point, so we add the difference)
           maxScore += (maxPointsForQ - 1);
           totalScore += points;
 
@@ -265,6 +234,7 @@ export const TakeQuiz = () => {
           user_id: user.id,
           score: totalScore,
           max_score: maxScore,
+          is_graded: !hasAiQuestions,
           completed_at: new Date().toISOString()
         })
         .select()
@@ -284,6 +254,13 @@ export const TakeQuiz = () => {
 
       if (answersError) throw answersError;
 
+      // Trigger asynchronous background grading if necessary
+      if (hasAiQuestions && attemptData) {
+        gradeAttempt(attemptData.id).catch(e => {
+          console.error("Error in background grading helper:", e);
+        });
+      }
+
       setIsSubmitted(true);
       toast.success('Quiz submitted successfully!');
     } catch (err: any) {
@@ -299,12 +276,22 @@ export const TakeQuiz = () => {
   const q = questions[currentQuestion];
 
   if (isSubmitted) {
+    const hasAiQuestions = questions.some(q => q.type === 'text' || q.type === 'picture');
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
         <div className="bg-white rounded-3xl shadow-lg p-10 border border-blue-100">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-green-600" /></div>
           <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Quiz Completed!</h2>
-          <button onClick={() => navigate('/student')} className="mt-8 bg-blue-800 hover:bg-blue-900 text-white px-8 py-3 rounded-xl font-bold shadow-sm transition-all">Return to Dashboard</button>
+          {hasAiQuestions ? (
+            <p className="text-gray-600 text-md max-w-md mx-auto mt-4 font-medium">
+              Your answers are submitted and are getting valuated. Please visit View Results in a few seconds to check your score.
+            </p>
+          ) : (
+            <p className="text-gray-600 text-md max-w-md mx-auto mt-4 font-medium">
+              Your answers have been graded and recorded.
+            </p>
+          )}
+          <button onClick={() => navigate('/student')} className="mt-8 bg-blue-800 hover:bg-blue-900 text-white px-8 py-3 rounded-xl font-bold shadow-sm transition-all cursor-pointer">Return to Dashboard</button>
         </div>
       </div>
     );
@@ -318,6 +305,11 @@ export const TakeQuiz = () => {
       </div>
 
       <div className="bg-white rounded-3xl shadow-sm border border-blue-100 p-8 sm:p-10 mb-8">
+        {q.imageUrl && (
+          <div className="mb-6 rounded-2xl overflow-hidden border border-gray-200 shadow-sm max-h-[350px] flex justify-center bg-slate-50">
+            <img src={q.imageUrl} alt="Question reference" className="max-h-[350px] object-contain rounded-2xl" />
+          </div>
+        )}
         <div className="mb-8 border-b border-gray-100 pb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-3">{q.textEn}</h2>
           {isBilingual && q.textTa && <h3 className="text-xl font-medium text-gray-500 font-serif">{q.textTa}</h3>}
@@ -365,7 +357,7 @@ export const TakeQuiz = () => {
               </div>
             );
           })}
-          {q.type === 'text' && (
+          {(q.type === 'text' || q.type === 'picture') && (
             <textarea className="w-full border-gray-300 border-2 rounded-2xl p-5 text-lg focus:ring-4 focus:border-blue-500" rows={5} placeholder="Type your answer here..." value={answers[currentQuestion] || ''} onChange={(e) => setAnswers({...answers, [currentQuestion]: e.target.value})}></textarea>
           )}
           {q.type === 'match' && (

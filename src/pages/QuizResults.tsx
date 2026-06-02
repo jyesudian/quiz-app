@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Trophy, Download, CheckCircle, XCircle, Info, Award } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
+import { gradeAttempt } from '../utils/evaluator';
 
 interface Option {
   id: number;
@@ -22,6 +23,7 @@ interface Question {
   textTa: string;
   aiRubric: string;
   options: Option[];
+  imageUrl?: string;
 }
 
 interface UserAnswer {
@@ -45,6 +47,8 @@ export const QuizResults: React.FC = () => {
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const [rank, setRank] = useState<string>('N/A');
   const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [isGrading, setIsGrading] = useState(false);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
 
   // Determine whose results we are viewing
   const targetUserId = userId || currentUser?.id;
@@ -110,6 +114,7 @@ export const QuizResults: React.FC = () => {
             textEn: q.text_en,
             textTa: q.text_ta || '',
             aiRubric: q.ai_rubric || '',
+            imageUrl: q.image_url || '',
             options: (q.question_options || []).map((opt: any) => ({
               id: opt.id,
               en: opt.text_en,
@@ -154,7 +159,22 @@ export const QuizResults: React.FC = () => {
     };
 
     fetchResults();
-  }, [quizId, targetUserId, navigate]);
+  }, [quizId, targetUserId, navigate, refetchTrigger]);
+
+  useEffect(() => {
+    const runGrading = async () => {
+      if (attempt && !attempt.is_graded && !isGrading) {
+        setIsGrading(true);
+        const success = await gradeAttempt(attempt.id);
+        if (success) {
+          toast.success("AI grading complete!");
+          setRefetchTrigger(prev => prev + 1);
+        }
+        setIsGrading(false);
+      }
+    };
+    runGrading();
+  }, [attempt, isGrading]);
 
   const handleDownloadPDF = () => {
     if (!quiz || !attempt || !studentProfile) return;
@@ -432,14 +452,13 @@ export const QuizResults: React.FC = () => {
               Results for {studentProfile?.full_name} • Attempted on {new Date(attempt?.completed_at).toLocaleDateString()}
             </p>
           </div>
-
           <button
             onClick={handleDownloadPDF}
-            disabled={isDownloading}
+            disabled={isDownloading || !attempt?.is_graded}
             className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md disabled:opacity-50 cursor-pointer"
           >
             <Download size={18} />
-            {isDownloading ? 'Generating PDF...' : 'Download PDF Report'}
+            {isDownloading ? 'Generating PDF...' : !attempt?.is_graded ? 'Valuating answers...' : 'Download PDF Report'}
           </button>
         </div>
       </div>
@@ -451,11 +470,20 @@ export const QuizResults: React.FC = () => {
           <div>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Overall Score</h3>
             <p className="text-3xl font-black text-blue-900 mt-2">
-              {attempt?.score} <span className="text-lg text-gray-400">/ {attempt?.max_score}</span>
+              {attempt?.is_graded ? (
+                <>
+                  {attempt?.score} <span className="text-lg text-gray-400">/ {attempt?.max_score}</span>
+                </>
+              ) : (
+                <span className="text-lg text-amber-605 font-bold animate-pulse flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
+                  Valuating score...
+                </span>
+              )}
             </p>
           </div>
-          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-800 font-extrabold text-lg">
-            {percentage}%
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-800 font-bold text-base sm:text-lg">
+            {attempt?.is_graded ? `${percentage}%` : '...'}
           </div>
         </div>
 
@@ -463,7 +491,9 @@ export const QuizResults: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 flex items-center justify-between">
           <div>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Series Rank</h3>
-            <p className="text-3xl font-black text-amber-600 mt-2">{rank}</p>
+            <p className="text-3xl font-black text-amber-600 mt-2">
+              {attempt?.is_graded ? rank : '...'}
+            </p>
           </div>
           <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600">
             <Trophy size={28} />
@@ -480,7 +510,7 @@ export const QuizResults: React.FC = () => {
         {questions.map((question, index) => {
           const studentAns = answers.find(ans => String(ans.question_id) === String(question.id));
           const pointsAwarded = studentAns ? studentAns.ai_score : 0;
-          const maxPoints = question.type === 'text'
+          const maxPoints = (question.type === 'text' || question.type === 'picture')
             ? 2
             : question.type === 'match'
               ? (question.options.length * 0.5)
@@ -493,7 +523,11 @@ export const QuizResults: React.FC = () => {
           let statusText = 'Unanswered';
 
           if (studentAns) {
-            if (isCorrect || (question.type === 'text' && pointsAwarded === 2)) {
+            if (!attempt?.is_graded && (question.type === 'text' || question.type === 'picture')) {
+              borderStyle = 'border-amber-200 bg-amber-50/5';
+              badgeStyle = 'bg-amber-100 text-amber-800 animate-pulse';
+              statusText = 'Valuating...';
+            } else if (isCorrect || ((question.type === 'text' || question.type === 'picture') && pointsAwarded === 2)) {
               borderStyle = 'border-green-300 bg-green-50/10';
               badgeStyle = 'bg-green-100 text-green-800';
               statusText = 'Correct';
@@ -521,12 +555,21 @@ export const QuizResults: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-sm font-bold text-gray-500 whitespace-nowrap">
-                  {pointsAwarded} / {maxPoints} pts
+                  {!attempt?.is_graded && (question.type === 'text' || question.type === 'picture') ? (
+                    '-- / 2 pts'
+                  ) : (
+                    `${pointsAwarded} / ${maxPoints} pts`
+                  )}
                 </div>
               </div>
 
               {/* Question Body */}
               <div className="mb-6">
+                {question.imageUrl && (
+                  <div className="mb-4 rounded-xl overflow-hidden border border-gray-200 max-h-[250px] flex justify-start bg-slate-50">
+                    <img src={question.imageUrl} alt="Question reference" className="max-h-[250px] object-contain rounded-xl" />
+                  </div>
+                )}
                 <h3 className="text-lg font-bold text-gray-900">{question.textEn}</h3>
                 {hasTamilText && (
                   <h4 className="text-base font-medium text-gray-500 font-serif mt-2 leading-relaxed">
@@ -674,7 +717,7 @@ export const QuizResults: React.FC = () => {
                 )}
 
                 {/* TEXT / AI QUESTION */}
-                {question.type === 'text' && (
+                {(question.type === 'text' || question.type === 'picture') && (
                   <div className="space-y-4">
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Your Submission</h4>

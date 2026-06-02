@@ -61,6 +61,7 @@ export const CreateQuiz = () => {
                 textEn: q.text_en,
                 textTa: q.text_ta || '',
                 aiRubric: q.ai_rubric || '',
+                imageUrl: q.image_url || '',
                 options: options,
                 leftItems: q.question_type === 'match' ? options.map((opt: any) => ({ id: opt.id, en: opt.en, ta: opt.ta })) : undefined,
                 rightItems: q.question_type === 'match' ? options.map((opt: any) => ({ id: opt.id, en: opt.matchEn, ta: opt.matchTa })) : undefined
@@ -69,7 +70,7 @@ export const CreateQuiz = () => {
             setQuestions(mappedQuestions);
           }
         } else {
-          setQuestions([{ id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }], aiRubric: '' }]);
+          setQuestions([{ id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }], aiRubric: '', imageUrl: '' }]);
         }
       } catch (err: any) {
         toast.error('Failed to load quiz data');
@@ -80,7 +81,7 @@ export const CreateQuiz = () => {
     fetchInitialData();
   }, [id]);
 
-  const addQuestion = () => setQuestions([...questions, { id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false }], aiRubric: '' }]);
+  const addQuestion = () => setQuestions([...questions, { id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false }], aiRubric: '', imageUrl: '' }]);
   
   const addOption = (qIndex: number) => { 
     const newQs = [...questions]; 
@@ -132,6 +133,44 @@ export const CreateQuiz = () => {
     const newQs = [...questions];
     newQs[qIndex].rightItems = newQs[qIndex].rightItems!.filter((_, idx) => idx !== itemIndex);
     setQuestions(newQs);
+  };
+
+  const handleImageUpload = async (qIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image file is too large. Max size is 5MB.");
+      return;
+    }
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+    const filePath = `questions/${fileName}`;
+
+    const loadingToast = toast.loading("Uploading image...");
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('question-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('question-images')
+        .getPublicUrl(filePath);
+
+      const publicUrl = data.publicUrl;
+
+      const newQs = [...questions];
+      newQs[qIndex].imageUrl = publicUrl;
+      setQuestions(newQs);
+      
+      toast.success("Image uploaded successfully!", { id: loadingToast });
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to upload image: " + err.message, { id: loadingToast });
+    }
   };
 
   const handleAutoTranslate = async (qIndex: number) => {
@@ -297,6 +336,7 @@ export const CreateQuiz = () => {
           text_en: q.textEn,
           text_ta: q.textTa || null,
           ai_rubric: q.aiRubric || null,
+          image_url: q.imageUrl || null,
           position: i + 1
         }).select().single();
 
@@ -418,7 +458,7 @@ export const CreateQuiz = () => {
                   const newQs = [...questions];
                   const newType = e.target.value as any;
                   newQs[qIndex].type = newType;
-                  if (newType === 'text') {
+                  if (newType === 'text' || newType === 'picture') {
                     newQs[qIndex].options = [];
                   } else if (newType === 'match') {
                     newQs[qIndex].options = [];
@@ -435,6 +475,7 @@ export const CreateQuiz = () => {
                   <option value="multiple">Multiple Choice</option>
                   <option value="match">Match the Following</option>
                   <option value="text">Text Entry (AI Graded)</option>
+                  <option value="picture">Picture Question (AI Graded)</option>
                 </select>
                 <button type="button" onClick={() => setQuestions(questions.filter((_, idx) => idx !== qIndex))} className="text-red-500 cursor-pointer"><Trash2 size={16} /></button>
               </div>
@@ -454,10 +495,47 @@ export const CreateQuiz = () => {
                 </div>
               </div>
 
-              {q.type === 'text' && (
+              {(q.type === 'text' || q.type === 'picture') && (
                 <div className="mb-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
                   <label className="block text-sm font-bold text-amber-900 mb-2 flex items-center"><BrainCircuit size={16} className="mr-2"/> AI Grading Rubric</label>
                   <textarea className="w-full border-amber-300 rounded-md shadow-sm border p-3" rows={2} value={q.aiRubric} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].aiRubric = e.target.value; setQuestions(newQs); }}></textarea>
+                </div>
+              )}
+
+              {q.type === 'picture' && (
+                <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Question Image</label>
+                  {q.imageUrl ? (
+                    <div className="relative inline-block mb-3">
+                      <img src={q.imageUrl} alt="Question preview" className="h-40 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const newQs = [...questions];
+                          newQs[qIndex].imageUrl = '';
+                          setQuestions(newQs);
+                        }}
+                        className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md hover:scale-105 transition-transform"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6 bg-white hover:bg-slate-50 transition-colors">
+                      <label className="cursor-pointer text-center">
+                        <span className="bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs px-3 py-1.5 rounded-lg font-bold border border-blue-200 inline-block transition-colors">
+                          Upload Image
+                        </span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={(e) => handleImageUpload(qIndex, e)} 
+                        />
+                        <p className="text-[10px] text-gray-400 mt-2">Supports JPG, PNG, GIF up to 5MB</p>
+                      </label>
+                    </div>
+                  )}
                 </div>
               )}
 

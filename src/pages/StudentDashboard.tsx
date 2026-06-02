@@ -5,11 +5,18 @@ import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import type { QuizSeries } from '../types';
+import { gradeAttempt } from '../utils/evaluator';
 
 export const StudentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [seriesData, setSeriesData] = useState<QuizSeries[]>([]);
+  const [seriesData, setSeriesData] = useState<any[]>([]);
+  const [activeTabs, setActiveTabs] = useState<Record<number, 'open' | 'completed'>>({});
+
+  const getActiveTab = (seriesId: number) => activeTabs[seriesId] || 'open';
+  const setActiveTab = (seriesId: number, tab: 'open' | 'completed') => {
+    setActiveTabs(prev => ({ ...prev, [seriesId]: tab }));
+  };
 
   const fetchDashboardData = async () => {
     if (!user) return;
@@ -28,7 +35,7 @@ export const StudentDashboard = () => {
 
       const { data: attemptsList, error: attemptsError } = await supabase
         .from('quiz_attempts')
-        .select('quiz_id')
+        .select('id, quiz_id, is_graded')
         .eq('user_id', user.id);
       if (attemptsError) throw attemptsError;
  
@@ -44,11 +51,16 @@ export const StudentDashboard = () => {
            isFrozen: s.is_frozen,
            enrolled: myEnrollment && myEnrollment.status === 'approved' ? [user.name] : [],
            isPending: myEnrollment && myEnrollment.status === 'pending',
-           quizzes: (quizzesList || []).filter((q: any) => q.series_id === s.id).map((q: any) => ({
-             id: q.id,
-             title: q.title,
-             isAttempted: (attemptsList || []).some((a: any) => a.quiz_id === q.id)
-           }))
+           quizzes: (quizzesList || []).filter((q: any) => q.series_id === s.id).map((q: any) => {
+             const attempt = (attemptsList || []).find((a: any) => a.quiz_id === q.id);
+             return {
+               id: q.id,
+               title: q.title,
+               isAttempted: !!attempt,
+               isGraded: attempt ? attempt.is_graded : true,
+               attemptId: attempt ? attempt.id : null
+             };
+           })
          };
        });
 
@@ -61,6 +73,42 @@ export const StudentDashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, [user]);
+
+  useEffect(() => {
+    let active = true;
+    const checkAndGradeAttempts = async () => {
+      const ungradedQuizzes = seriesData
+        .flatMap(s => s.quizzes || [])
+        .filter(q => q.isAttempted && !q.isGraded && q.attemptId);
+
+      if (ungradedQuizzes.length === 0) return;
+
+      let anyGraded = false;
+      for (const q of ungradedQuizzes) {
+        if (!active) return;
+        try {
+          const success = await gradeAttempt(q.attemptId);
+          if (success) {
+            anyGraded = true;
+          }
+        } catch (err) {
+          console.error("Grading failed in dashboard loop:", err);
+        }
+      }
+
+      if (anyGraded && active) {
+        fetchDashboardData();
+      }
+    };
+
+    if (seriesData.length > 0) {
+      checkAndGradeAttempts();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [seriesData]);
 
   const handleJoin = async (series: QuizSeries) => {
     if (!user) return;
@@ -123,23 +171,64 @@ export const StudentDashboard = () => {
             
             {!series.isFrozen && (
               <div className="p-5 bg-white border-t border-gray-100">
-                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Available Quizzes</h4>
+                <div className="flex border-b border-gray-200 mb-4">
+                  <button 
+                    onClick={() => setActiveTab(series.id, 'open')}
+                    className={`py-2 px-4 text-sm font-bold border-b-2 transition-colors ${getActiveTab(series.id) === 'open' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Open Quizzes ({series.quizzes?.filter((q: any) => !q.isAttempted).length || 0})
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab(series.id, 'completed')}
+                    className={`py-2 px-4 text-sm font-bold border-b-2 transition-colors ${getActiveTab(series.id) === 'completed' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Completed Quizzes ({series.quizzes?.filter((q: any) => q.isAttempted).length || 0})
+                  </button>
+                </div>
+
                 <div className="space-y-3">
-                  {series.quizzes && series.quizzes.length > 0 ? (
-                    series.quizzes.map((quiz) => (
+                  {(() => {
+                    const currentTab = getActiveTab(series.id);
+                    const filteredQuizzes = (series.quizzes || []).filter((quiz: any) => {
+                      if (currentTab === 'open') return !quiz.isAttempted;
+                      return quiz.isAttempted;
+                    });
+                    
+                    if (filteredQuizzes.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-400 italic py-2">
+                          {currentTab === 'open' ? 'No open quizzes available.' : 'No completed quizzes yet.'}
+                        </p>
+                      );
+                    }
+                    
+                    return filteredQuizzes.map((quiz: any) => (
                       <div key={quiz.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/20 transition-all">
                         <div className="flex items-center">
                           {quiz.isAttempted ? (
-                            <div className="h-5 w-5 rounded-full bg-green-100 border-2 border-green-500 mr-3 flex items-center justify-center"><Check className="h-3 w-3 text-green-600 font-extrabold" /></div>
+                            <div className="h-5 w-5 rounded-full bg-green-100 border-2 border-green-500 mr-3 flex items-center justify-center">
+                              {quiz.isGraded ? (
+                                <Check className="h-3 w-3 text-green-600 font-extrabold" />
+                              ) : (
+                                <span className="h-1.5 w-1.5 bg-amber-500 rounded-full animate-ping"></span>
+                              )}
+                            </div>
                           ) : (
                             <div className="h-5 w-5 rounded-full border-2 border-blue-500 mr-3 flex items-center justify-center"><div className="h-1.5 w-1.5 bg-blue-500 rounded-full"></div></div>
                           )}
-                          <span className={`font-bold ${quiz.isAttempted ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{quiz.title}</span>
+                          <span className={`font-bold ${quiz.isAttempted && quiz.isGraded ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{quiz.title}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           {quiz.isAttempted ? (
                             <div className="flex items-center gap-2">
-                              <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
+                              {quiz.isGraded ? (
+                                <span className="bg-green-50 text-green-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-green-200">Completed</span>
+                              ) : (
+                                <span className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-amber-200 flex items-center gap-1.5">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                                  Valuating...
+                                </span>
+                              )}
                               <button onClick={() => navigate(`/quiz-results/${quiz.id}`)} className="bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs px-3 py-1.5 rounded-lg font-bold border border-blue-200 transition-colors cursor-pointer">
                                 View Results
                               </button>
@@ -158,10 +247,8 @@ export const StudentDashboard = () => {
                           </button>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-400 italic">No quizzes available for this series yet.</p>
-                  )}
+                    ));
+                  })()}
                 </div>
               </div>
             )}

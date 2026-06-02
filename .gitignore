@@ -43,3 +43,5 @@ coverage/
 network-logs
 network-logs*
 *.log
+# Screenshots
+match-option.png

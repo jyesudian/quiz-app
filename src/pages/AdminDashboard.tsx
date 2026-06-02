@@ -202,6 +202,27 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteSeries = async (seriesId: number) => {
+    if (!window.confirm("Are you sure you want to delete this series? This will permanently delete all quizzes, questions, options, attempts, student marks, and leaderboard records associated with this series.")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('quiz_series')
+        .delete()
+        .eq('id', seriesId);
+
+      if (error) throw error;
+
+      toast.success('Series deleted successfully');
+      fetchDashboardData();
+    } catch (err: any) {
+      toast.error('Error deleting series: ' + err.message);
+      console.error(err);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
@@ -247,6 +268,9 @@ export const AdminDashboard = () => {
                     <div className="flex space-x-3 border-t border-gray-100 pt-3">
                       <button onClick={() => toggleFreeze(series.id, series.isFrozen)} className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${series.isFrozen ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>
                         {series.isFrozen ? 'Unfreeze Series' : 'Freeze / Conclude Series'}
+                      </button>
+                      <button onClick={() => handleDeleteSeries(series.id)} className="text-xs font-bold px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 flex items-center cursor-pointer">
+                        <Trash2 size={12} className="mr-1" /> Delete Series
                       </button>
                     </div>
 

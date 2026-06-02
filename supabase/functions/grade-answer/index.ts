@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { studentAnswer, aiRubric, questionEn } = await req.json();
+    const { studentAnswer, aiRubric, questionEn, imageUrl } = await req.json();
 
     if (!studentAnswer || !aiRubric || !questionEn) {
       throw new Error("Missing required fields: studentAnswer, aiRubric, or questionEn");
@@ -23,12 +23,45 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY environment variable is missing");
     }
 
-    const prompt = `You are an AI grader for a Bible study quiz.
+    let imagePart = null;
+    if (imageUrl) {
+      try {
+        const imageRes = await fetch(imageUrl);
+        if (imageRes.ok) {
+          const blob = await imageRes.blob();
+          const mimeType = blob.type || 'image/jpeg';
+          const buffer = await blob.arrayBuffer();
+          const uint8 = new Uint8Array(buffer);
+          let binary = '';
+          const len = uint8.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(uint8[i]);
+          }
+          const base64Data = btoa(binary);
+          imagePart = {
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data
+            }
+          };
+        } else {
+          console.error("Failed to fetch imageUrl:", imageUrl, imageRes.statusText);
+        }
+      } catch (err) {
+        console.error("Error fetching image from URL:", imageUrl, err);
+      }
+    }
+
+    let prompt = `You are an AI grader for a Bible study quiz.
 Question: "${questionEn}"
 Grading Rubric / Golden Answer: "${aiRubric}"
-Student's Answer: "${studentAnswer}"
+Student's Answer: "${studentAnswer}"`;
 
-Grade the student's answer out of 10 points based STRICTLY on the provided rubric. 
+    if (imageUrl) {
+      prompt += `\nAn image has been attached to this question. Review the image and grade the student's answer accordingly.`;
+    }
+
+    prompt += `\n\nGrade the student's answer out of 10 points based STRICTLY on the provided rubric. 
 Be gracious but fair. 
 Return ONLY a raw JSON object with two fields: 
 1. "score" (a number between 0 and 10)
@@ -46,7 +79,10 @@ Do not include markdown blocks like \`\`\`json. Return the raw JSON.`;
       body: JSON.stringify({
         contents: [
           {
-            parts: [{ text: prompt }]
+            parts: [
+              { text: prompt },
+              ...(imagePart ? [imagePart] : [])
+            ]
           }
         ],
         generationConfig: {

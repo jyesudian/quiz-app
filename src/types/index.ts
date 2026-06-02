@@ -43,11 +43,12 @@ export interface QuestionOption {
 
 export interface Question {
   id: number | string;
-  type: 'single' | 'multiple' | 'text' | 'match';
+  type: 'single' | 'multiple' | 'text' | 'match' | 'picture';
   textEn: string;
   textTa: string;
   aiRubric: string;
   options: QuestionOption[];
   leftItems?: { id?: number | string; en: string; ta: string }[];
   rightItems?: { id?: number | string; en: string; ta: string }[];
+  imageUrl?: string;
 }
