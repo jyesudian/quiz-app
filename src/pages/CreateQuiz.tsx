@@ -9,7 +9,7 @@ import type { QuizSeries, Question, QuestionOption } from '../types';
 export const CreateQuiz = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [isBilingual] = useState(true);
+  const [isBilingual, setIsBilingual] = useState(true);
   const [seriesData, setSeriesData] = useState<QuizSeries[]>([]);
   const [seriesSelection, setSeriesSelection] = useState<string>('new');
   const [newSeriesName, setNewSeriesName] = useState('');
@@ -33,10 +33,11 @@ export const CreateQuiz = () => {
         if (seriesList) setSeriesData(seriesList as any[]);
 
         if (id) {
-          const { data: quizData } = await supabase.from('quizzes').select('*').eq('id', id).single();
+          const { data: quizData } = await supabase.from('quizzes').select('*, quiz_series(*)').eq('id', id).single();
           if (quizData) {
             setQuizTitle(quizData.title);
             setSeriesSelection(quizData.series_id.toString());
+            setIsBilingual((quizData as any).quiz_series?.is_bilingual ?? false);
           }
 
           const { data: questionsData } = await supabase
@@ -312,6 +313,10 @@ export const CreateQuiz = () => {
         seriesId = newSeries.id;
       } else {
         seriesId = parseInt(seriesSelection);
+        await supabase
+          .from('quiz_series')
+          .update({ is_bilingual: isBilingual })
+          .eq('id', seriesId);
       }
 
       let quizId: number;
@@ -418,11 +423,28 @@ export const CreateQuiz = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Add to Series</label>
-            <select className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 border p-2 mb-3" value={seriesSelection} onChange={(e) => setSeriesSelection(e.target.value)}>
+            <select className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 border p-2 mb-3" value={seriesSelection} onChange={(e) => {
+              const val = e.target.value;
+              setSeriesSelection(val);
+              if (val !== 'new') {
+                const selectedSeries = seriesData.find(s => s.id.toString() === val);
+                if (selectedSeries) {
+                  setIsBilingual((selectedSeries as any).is_bilingual);
+                }
+              }
+            }}>
               <option value="new">Create New Series...</option>
               {seriesData.map((s: any) => <option key={s.id} value={s.id.toString()}>{s.title}</option>)}
             </select>
           </div>
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-gray-100">
+           <label className="flex items-center space-x-2 cursor-pointer">
+             <input type="checkbox" checked={isBilingual} onChange={(e) => setIsBilingual(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer" />
+             <span className="text-sm font-bold text-gray-700">Bilingual Quiz (English / Tamil)</span>
+             <span className="text-xs text-gray-400 font-medium">- Enables Tamil translation tools and Tamil inputs</span>
+           </label>
         </div>
         
         {seriesSelection === 'new' && (
@@ -481,18 +503,20 @@ export const CreateQuiz = () => {
               </div>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <div className={isBilingual ? "grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" : "grid grid-cols-1 gap-6 mb-6"}>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">English Text</label>
                   <textarea className="w-full border-gray-300 rounded-md border p-3" rows={2} value={q.textEn} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].textEn = e.target.value; setQuestions(newQs); }}></textarea>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between items-center">
-                    <span>Tamil Text (தமிழ்)</span>
-                    <button type="button" onClick={() => handleAutoTranslate(qIndex)} className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded text-xs"><Languages size={12} className="mr-1"/> Auto-Translate</button>
-                  </label>
-                  <textarea className="w-full border-gray-300 rounded-md border p-3 bg-slate-50" rows={2} value={q.textTa} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].textTa = e.target.value; setQuestions(newQs); }}></textarea>
-                </div>
+                {isBilingual && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between items-center">
+                      <span>Tamil Text (தமிழ்)</span>
+                      <button type="button" onClick={() => handleAutoTranslate(qIndex)} className="text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded text-xs"><Languages size={12} className="mr-1"/> Auto-Translate</button>
+                    </label>
+                    <textarea className="w-full border-gray-300 rounded-md border p-3 bg-slate-50" rows={2} value={q.textTa} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].textTa = e.target.value; setQuestions(newQs); }}></textarea>
+                  </div>
+                )}
               </div>
 
               {(q.type === 'text' || q.type === 'picture') && (
@@ -554,8 +578,10 @@ export const CreateQuiz = () => {
                               setQuestions(newQs);
                             }} className="w-4 h-4 text-blue-600 animate-none" />
                         </div>
-                        <div className="col-span-5"><input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Option (EN)" value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} /></div>
-                        <div className="col-span-5"><input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Option (TA)" value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} /></div>
+                        <div className={isBilingual ? "col-span-5" : "col-span-10"}><input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Option (EN)" value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} /></div>
+                        {isBilingual && (
+                          <div className="col-span-5"><input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Option (TA)" value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} /></div>
+                        )}
                         <div className="col-span-1 text-center"><button type="button" onClick={() => { const newQs = [...questions]; newQs[qIndex].options = newQs[qIndex].options.filter((_, idx) => idx !== oIndex); setQuestions(newQs); }} className="text-red-400 hover:text-red-600 cursor-pointer"><Trash2 size={16} /></button></div>
                     </div>
                   ))}
@@ -588,13 +614,15 @@ export const CreateQuiz = () => {
                                 value={leftOpt.en}
                                 onChange={(e) => handleLeftItemChange(qIndex, oIndex, 'en', e.target.value)}
                               />
-                              <input
-                                type="text"
-                                className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
-                                placeholder={`Left Item #${oIndex + 1} (TA)`}
-                                value={leftOpt.ta}
-                                onChange={(e) => handleLeftItemChange(qIndex, oIndex, 'ta', e.target.value)}
-                              />
+                              {isBilingual && (
+                                <input
+                                  type="text"
+                                  className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
+                                  placeholder={`Left Item #${oIndex + 1} (TA)`}
+                                  value={leftOpt.ta}
+                                  onChange={(e) => handleLeftItemChange(qIndex, oIndex, 'ta', e.target.value)}
+                                />
+                              )}
                             </div>
                             <button
                               type="button"
@@ -635,13 +663,15 @@ export const CreateQuiz = () => {
                                 value={rightOpt.en}
                                 onChange={(e) => handleRightItemChange(qIndex, oIndex, 'en', e.target.value)}
                               />
-                              <input
-                                type="text"
-                                className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
-                                placeholder={`Right Match #${oIndex + 1} (TA)`}
-                                value={rightOpt.ta}
-                                onChange={(e) => handleRightItemChange(qIndex, oIndex, 'ta', e.target.value)}
-                              />
+                              {isBilingual && (
+                                <input
+                                  type="text"
+                                  className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
+                                  placeholder={`Right Match #${oIndex + 1} (TA)`}
+                                  value={rightOpt.ta}
+                                  onChange={(e) => handleRightItemChange(qIndex, oIndex, 'ta', e.target.value)}
+                                />
+                              )}
                             </div>
                             <button
                               type="button"
