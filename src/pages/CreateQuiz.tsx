@@ -493,7 +493,10 @@ export const CreateQuiz = () => {
                     {/* Left Column: Left Items */}
                     <div className="space-y-4">
                       <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-                        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Left Items (Keys)</h4>
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Left Items (Keys)</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">These static items will display on the left side of the student's quiz.</p>
+                        </div>
                         <span className="text-xs text-gray-500 font-bold">Total: {(q.leftItems || []).length}</span>
                       </div>
                       <div className="space-y-4">
@@ -537,7 +540,10 @@ export const CreateQuiz = () => {
                     {/* Right Column: Right Matches */}
                     <div className="space-y-4">
                       <div className="flex justify-between items-center pb-2 border-b border-gray-100">
-                        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Right Matches (Answers)</h4>
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Right Matches (Answers)</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">These matching answers will shuffle in the pool at the bottom.</p>
+                        </div>
                         <span className="text-xs text-gray-500 font-bold">Total: {(q.rightItems || []).length}</span>
                       </div>
                       <div className="space-y-4">
