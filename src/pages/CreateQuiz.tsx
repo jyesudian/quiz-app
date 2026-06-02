@@ -56,13 +56,15 @@ export const CreateQuiz = () => {
                 id: opt.id,
                 en: opt.text_en,
                 ta: opt.text_ta || '',
-                isCorrect: opt.is_correct || false
+                isCorrect: opt.is_correct || false,
+                matchEn: opt.match_text_en || '',
+                matchTa: opt.match_text_ta || ''
               }))
             }));
             setQuestions(mappedQuestions);
           }
         } else {
-          setQuestions([{ id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false }], aiRubric: '' }]);
+          setQuestions([{ id: Date.now(), type: 'single', textEn: '', textTa: '', options: [{ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }], aiRubric: '' }]);
         }
       } catch (err: any) {
         toast.error('Failed to load quiz data');
@@ -77,7 +79,7 @@ export const CreateQuiz = () => {
   
   const addOption = (qIndex: number) => { 
     const newQs = [...questions]; 
-    newQs[qIndex].options.push({ en: '', ta: '', isCorrect: false }); 
+    newQs[qIndex].options.push({ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }); 
     setQuestions(newQs); 
   };
 
@@ -92,14 +94,19 @@ export const CreateQuiz = () => {
       const translatedQuestion = await translateText(q.textEn);
       let translatedOptions = [...q.options];
       
-      if (q.type === 'single' || q.type === 'multiple') {
+      if (q.type === 'single' || q.type === 'multiple' || q.type === 'match') {
         translatedOptions = await Promise.all(
           q.options.map(async (opt: QuestionOption) => {
+            const updatedOpt = { ...opt };
             if (opt.en && opt.en.trim()) {
               const translatedOpt = await translateText(opt.en);
-              return { ...opt, ta: translatedOpt };
+              updatedOpt.ta = translatedOpt;
             }
-            return opt;
+            if (q.type === 'match' && opt.matchEn && opt.matchEn.trim()) {
+              const translatedMatch = await translateText(opt.matchEn);
+              updatedOpt.matchTa = translatedMatch;
+            }
+            return updatedOpt;
           })
         );
       }
@@ -187,12 +194,14 @@ export const CreateQuiz = () => {
 
         if (qError) throw qError;
 
-        if (q.type === 'single' || q.type === 'multiple') {
+        if (q.type === 'single' || q.type === 'multiple' || q.type === 'match') {
           const optionsToInsert = q.options.map((opt: any) => ({
             question_id: insertedQuestion.id,
             text_en: opt.en,
             text_ta: opt.ta || null,
-            is_correct: opt.isCorrect || false
+            is_correct: opt.isCorrect || false,
+            match_text_en: q.type === 'match' ? (opt.matchEn || '') : null,
+            match_text_ta: q.type === 'match' ? (opt.matchTa || '') : null
           }));
           const { error: optError } = await supabase.from('question_options').insert(optionsToInsert);
           if (optError) throw optError;
@@ -279,14 +288,15 @@ export const CreateQuiz = () => {
                   const newQs = [...questions];
                   newQs[qIndex].type = e.target.value as any;
                   if (e.target.value === 'text') newQs[qIndex].options = [];
-                  else if (newQs[qIndex].options.length === 0) newQs[qIndex].options = [{ en: '', ta: '', isCorrect: false }];
+                  else if (newQs[qIndex].options.length === 0) newQs[qIndex].options = [{ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }];
                   setQuestions(newQs);
                 }}>
                   <option value="single">Single Choice</option>
                   <option value="multiple">Multiple Choice</option>
+                  <option value="match">Match the Following</option>
                   <option value="text">Text Entry (AI Graded)</option>
                 </select>
-                <button type="button" onClick={() => setQuestions(questions.filter((_, idx) => idx !== qIndex))} className="text-red-500"><Trash2 size={16} /></button>
+                <button type="button" onClick={() => setQuestions(questions.filter((_, idx) => idx !== qIndex))} className="text-red-500 cursor-pointer"><Trash2 size={16} /></button>
               </div>
             </div>
             <div className="p-6">
@@ -324,15 +334,46 @@ export const CreateQuiz = () => {
                                 newQs[qIndex].options[oIndex].isCorrect = e.target.checked;
                               }
                               setQuestions(newQs);
-                            }} className="w-4 h-4 text-blue-600" />
+                            }} className="w-4 h-4 text-blue-600 animate-none" />
                         </div>
                         <div className="col-span-5"><input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Option (EN)" value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} /></div>
                         <div className="col-span-5"><input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Option (TA)" value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} /></div>
-                        <div className="col-span-1 text-center"><button type="button" onClick={() => { const newQs = [...questions]; newQs[qIndex].options = newQs[qIndex].options.filter((_, idx) => idx !== oIndex); setQuestions(newQs); }} className="text-red-400 hover:text-red-600"><Trash2 size={16} /></button></div>
+                        <div className="col-span-1 text-center"><button type="button" onClick={() => { const newQs = [...questions]; newQs[qIndex].options = newQs[qIndex].options.filter((_, idx) => idx !== oIndex); setQuestions(newQs); }} className="text-red-400 hover:text-red-600 cursor-pointer"><Trash2 size={16} /></button></div>
                     </div>
                   ))}
-                  <button type="button" onClick={() => addOption(qIndex)} className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded">
+                  <button type="button" onClick={() => addOption(qIndex)} className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded cursor-pointer">
                     <Plus size={14} className="mr-1" /> Add Option
+                  </button>
+                </div>
+              )}
+
+              {q.type === 'match' && (
+                <div className="space-y-4 pl-4 border-l-2 border-gray-100">
+                  <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 hidden sm:grid">
+                    <div className="col-span-5">Left Item (English / Tamil)</div>
+                    <div className="col-span-6">Matching Right Item (English / Tamil)</div>
+                    <div className="col-span-1 text-center">Delete</div>
+                  </div>
+                  {q.options.map((opt, oIndex) => (
+                    <div key={oIndex} className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start border-b border-gray-100 pb-4 sm:pb-3">
+                      {/* Left Item Input */}
+                      <div className="col-span-1 sm:col-span-5 space-y-2">
+                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Left Item (EN)" value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} />
+                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Left Item (TA)" value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} />
+                      </div>
+                      {/* Matching Right Item Input */}
+                      <div className="col-span-1 sm:col-span-6 space-y-2">
+                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Right Match (EN)" value={opt.matchEn || ''} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].matchEn = e.target.value; setQuestions(newQs); }} />
+                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Right Match (TA)" value={opt.matchTa || ''} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].matchTa = e.target.value; setQuestions(newQs); }} />
+                      </div>
+                      {/* Delete option */}
+                      <div className="col-span-1 text-center sm:mt-3">
+                        <button type="button" onClick={() => { const newQs = [...questions]; newQs[qIndex].options = newQs[qIndex].options.filter((_, idx) => idx !== oIndex); setQuestions(newQs); }} className="text-red-400 hover:text-red-600 cursor-pointer"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => addOption(qIndex)} className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded cursor-pointer">
+                    <Plus size={14} className="mr-1" /> Add Match Pair
                   </button>
                 </div>
               )}

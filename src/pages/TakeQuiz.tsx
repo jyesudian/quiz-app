@@ -62,7 +62,9 @@ export const TakeQuiz = () => {
               id: opt.id,
               en: opt.text_en,
               ta: opt.text_ta || '',
-              isCorrect: opt.is_correct // Needed for grading
+              isCorrect: opt.is_correct, // Needed for grading
+              matchEn: opt.match_text_en || '',
+              matchTa: opt.match_text_ta || ''
             }))
           }));
           setQuestions(mappedQuestions);
@@ -77,6 +79,30 @@ export const TakeQuiz = () => {
     
     fetchQuiz();
   }, [quizId, navigate, user]);
+
+  const [shuffledMatches, setShuffledMatches] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (questions.length > 0) {
+      const q = questions[currentQuestion];
+      if (q.type === 'match') {
+        // Collect matches
+        const matches = q.options.map(o => ({ id: o.id, en: o.matchEn, ta: o.matchTa }));
+        // Shuffle the options to create the right-side list
+        const shuffled = [...matches].sort(() => Math.random() - 0.5);
+        setShuffledMatches(shuffled);
+
+        // Initialize answers with an empty map if not present
+        if (!answers[currentQuestion]) {
+          const initialMap: Record<string, string> = {};
+          q.options.forEach(opt => {
+            initialMap[String(opt.id)] = '';
+          });
+          setAnswers(prev => ({ ...prev, [currentQuestion]: initialMap }));
+        }
+      }
+    }
+  }, [currentQuestion, questions]);
 
   const handleSubmit = async () => {
     if (!user || !quizId) return;
@@ -166,6 +192,31 @@ export const TakeQuiz = () => {
             text_answer: studentAnswer || '',
             ai_score: aiScore,
             is_correct: aiScore === 2
+          });
+        } else if (q.type === 'match') {
+          const studentMatches = answers[i] || {};
+          let correctMatchesCount = 0;
+
+          q.options.forEach((opt: any) => {
+            const matchedId = studentMatches[String(opt.id)];
+            if (String(matchedId) === String(opt.id)) {
+              correctMatchesCount++;
+            }
+          });
+
+          const points = correctMatchesCount * 0.5;
+          const maxPointsForQ = q.options.length * 0.5;
+
+          // Adjust max score for this question (questions.length initially assumed 1 point, so we add the difference)
+          maxScore += (maxPointsForQ - 1);
+          totalScore += points;
+
+          processedAnswers.push({
+            question_id: q.id,
+            selected_option_id: null,
+            text_answer: JSON.stringify(studentMatches),
+            ai_score: points,
+            is_correct: correctMatchesCount === q.options.length
           });
         }
       }
@@ -280,6 +331,55 @@ export const TakeQuiz = () => {
           })}
           {q.type === 'text' && (
             <textarea className="w-full border-gray-300 border-2 rounded-2xl p-5 text-lg focus:ring-4 focus:border-blue-500" rows={5} placeholder="Type your answer here..." value={answers[currentQuestion] || ''} onChange={(e) => setAnswers({...answers, [currentQuestion]: e.target.value})}></textarea>
+          )}
+          {q.type === 'match' && (
+            <div className="space-y-6">
+              <p className="text-xs sm:text-sm font-bold text-blue-900 bg-blue-50 p-4 rounded-xl border border-blue-150 leading-relaxed">
+                Match each item on the left with the correct option from the dropdown menu on the right.
+              </p>
+              <div className="space-y-4">
+                {q.options.map((opt: any) => {
+                  const currentMap = answers[currentQuestion] || {};
+                  const selectedVal = currentMap[String(opt.id)] || '';
+
+                  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const newMap = { ...currentMap, [String(opt.id)]: e.target.value };
+                    setAnswers({ ...answers, [currentQuestion]: newMap });
+                  };
+
+                  return (
+                    <div key={opt.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-50 p-4 sm:p-5 rounded-2xl border-2 border-gray-200">
+                      {/* Left static item */}
+                      <div className="flex-1">
+                        <p className="text-lg font-bold text-gray-800">{opt.en}</p>
+                        {isBilingual && opt.ta && <p className="text-sm mt-1 font-serif text-gray-500">{opt.ta}</p>}
+                      </div>
+                      
+                      {/* Connector Arrow */}
+                      <div className="hidden sm:flex items-center text-gray-400">
+                        <span className="text-xl">➔</span>
+                      </div>
+                      
+                      {/* Right match selector */}
+                      <div className="w-full sm:w-72">
+                        <select
+                          value={selectedVal}
+                          onChange={handleChange}
+                          className="w-full border-gray-300 rounded-xl text-sm sm:text-base border-2 p-3 font-bold text-gray-850 bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-600 transition-all cursor-pointer outline-none"
+                        >
+                          <option value="">-- Choose Match --</option>
+                          {shuffledMatches.map((m: any) => (
+                            <option key={m.id} value={String(m.id)}>
+                              {m.en} {isBilingual && m.ta ? `(${m.ta})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </div>

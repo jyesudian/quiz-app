@@ -37,11 +37,13 @@ export interface QuestionOption {
   en: string;
   ta: string;
   isCorrect: boolean;
+  matchEn?: string;
+  matchTa?: string;
 }
 
 export interface Question {
   id: number | string;
-  type: 'single' | 'multiple' | 'text';
+  type: 'single' | 'multiple' | 'text' | 'match';
   textEn: string;
   textTa: string;
   aiRubric: string;

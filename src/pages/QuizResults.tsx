@@ -11,6 +11,8 @@ interface Option {
   en: string;
   ta: string;
   isCorrect: boolean;
+  matchEn?: string;
+  matchTa?: string;
 }
 
 interface Question {
@@ -112,7 +114,9 @@ export const QuizResults: React.FC = () => {
               id: opt.id,
               en: opt.text_en,
               ta: opt.text_ta || '',
-              isCorrect: opt.is_correct
+              isCorrect: opt.is_correct,
+              matchEn: opt.match_text_en || '',
+              matchTa: opt.match_text_ta || ''
             }))
           }));
           console.log('Mapped questions:', mappedQuestions);
@@ -301,11 +305,66 @@ export const QuizResults: React.FC = () => {
           const wrappedRubric = doc.splitTextToSize(`Correct Answer Criteria: ${question.aiRubric || 'N/A'}`, 170);
           doc.text(wrappedRubric, 18, yOffset);
           yOffset += (wrappedRubric.length * 5);
+        } else if (question.type === 'match') {
+          let studentMatches: Record<string, string> = {};
+          try {
+            studentMatches = JSON.parse(studentAns?.text_answer || '{}');
+          } catch {
+            studentMatches = {};
+          }
+
+          question.options.forEach((opt) => {
+            if (yOffset > 270) {
+              doc.addPage();
+              yOffset = 20;
+            }
+
+            const matchedId = studentMatches[String(opt.id)];
+            const matchedOpt = question.options.find(o => String(o.id) === String(matchedId));
+            const isPairCorrect = String(matchedId) === String(opt.id);
+
+            let statusStr = '';
+            if (matchedId) {
+              if (isPairCorrect) {
+                statusStr = ' (Correct)';
+                doc.setTextColor(22, 101, 52); // green-800
+                doc.setFont('Helvetica', 'bold');
+              } else {
+                statusStr = ' (Incorrect)';
+                doc.setTextColor(153, 27, 27); // red-800
+                doc.setFont('Helvetica', 'bold');
+              }
+            } else {
+              statusStr = ' (No Match)';
+              doc.setTextColor(146, 64, 14); // amber-800
+              doc.setFont('Helvetica', 'normal');
+            }
+
+            const leftText = opt.en;
+            const rightText = matchedOpt ? matchedOpt.matchEn : 'None';
+            const correctText = opt.matchEn || '';
+
+            const matchLine = doc.splitTextToSize(`[Match] ${leftText} -> Selected: ${rightText}${statusStr}`, 170);
+            doc.text(matchLine, 18, yOffset);
+            yOffset += (matchLine.length * 5);
+
+            if (!isPairCorrect) {
+              doc.setTextColor(22, 101, 52); // green-800
+              doc.setFont('Helvetica', 'bold');
+              doc.text(`        Correct: ${correctText}`, 18, yOffset);
+              yOffset += 5;
+            }
+            
+            // Reset text styling
+            doc.setTextColor(71, 85, 105);
+            doc.setFont('Helvetica', 'normal');
+          });
+          yOffset += 2;
         }
 
         // Score Status
         const pointsAwarded = studentAns ? studentAns.ai_score : 0;
-        const maxPoints = question.type === 'text' ? 2 : 1;
+        const maxPoints = question.type === 'text' ? 2 : (question.type === 'match' ? (question.options.length * 0.5) : 1);
         const isCorrect = studentAns ? studentAns.is_correct : false;
 
         doc.setFont('Helvetica', 'bold');
@@ -421,7 +480,11 @@ export const QuizResults: React.FC = () => {
         {questions.map((question, index) => {
           const studentAns = answers.find(ans => String(ans.question_id) === String(question.id));
           const pointsAwarded = studentAns ? studentAns.ai_score : 0;
-          const maxPoints = question.type === 'text' ? 2 : 1;
+          const maxPoints = question.type === 'text'
+            ? 2
+            : question.type === 'match'
+              ? (question.options.length * 0.5)
+              : 1;
           const isCorrect = studentAns ? studentAns.is_correct : false;
 
           // Determine Card Styles based on correctness
@@ -531,6 +594,84 @@ export const QuizResults: React.FC = () => {
                     </div>
                   );
                 })}
+
+                {/* MATCH THE FOLLOWING */}
+                {question.type === 'match' && (
+                  <div className="space-y-4">
+                    {(() => {
+                      let studentMatches: Record<string, string> = {};
+                      try {
+                        studentMatches = JSON.parse(studentAns?.text_answer || '{}');
+                      } catch {
+                        studentMatches = {};
+                      }
+
+                      return question.options.map((opt) => {
+                        const matchedId = studentMatches[String(opt.id)];
+                        const matchedOpt = question.options.find(o => String(o.id) === String(matchedId));
+                        const isPairCorrect = String(matchedId) === String(opt.id);
+
+                        let optBorder = 'border-gray-200';
+                        let optBg = 'bg-white';
+                        let optIcon = null;
+
+                        if (matchedId) {
+                          if (isPairCorrect) {
+                            optBorder = 'border-green-500 bg-green-50/50';
+                            optBg = 'bg-green-50/20';
+                            optIcon = <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />;
+                          } else {
+                            optBorder = 'border-red-500 bg-red-50/50';
+                            optBg = 'bg-red-50/20';
+                            optIcon = <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />;
+                          }
+                        } else {
+                          optBorder = 'border-amber-300 bg-amber-50/20';
+                          optBg = 'bg-amber-50/10';
+                        }
+
+                        return (
+                          <div key={opt.id} className={`p-4 rounded-xl border-2 transition-all ${optBorder} ${optBg}`}>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                              <div className="flex-1">
+                                <p className="font-bold text-gray-800 text-sm sm:text-base">{opt.en}</p>
+                                {opt.ta && <p className="text-xs text-gray-500 font-serif mt-0.5">{opt.ta}</p>}
+                              </div>
+
+                              <div className="hidden sm:flex items-center text-gray-400 font-bold">
+                                ➔
+                              </div>
+
+                              <div className="flex-1 flex items-center justify-between gap-2 bg-white/60 p-2.5 rounded-lg border border-gray-100">
+                                <div className="text-sm font-semibold">
+                                  {matchedOpt ? (
+                                    <>
+                                      <span className="text-gray-900">{matchedOpt.matchEn}</span>
+                                      {matchedOpt.matchTa && <span className="text-gray-500 font-serif text-xs ml-1">({matchedOpt.matchTa})</span>}
+                                    </>
+                                  ) : (
+                                    <span className="italic text-gray-400">No match selected</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {optIcon}
+                                </div>
+                              </div>
+                            </div>
+
+                            {!isPairCorrect && (
+                              <div className="mt-3 pt-3 border-t border-red-100/50 text-xs sm:text-sm text-green-800 flex items-center gap-1.5">
+                                <span className="font-bold">Correct Match:</span>
+                                <span>{opt.matchEn}</span>
+                                {opt.matchTa && <span className="font-serif text-gray-600">({opt.matchTa})</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
 
                 {/* TEXT / AI QUESTION */}
                 {question.type === 'text' && (
