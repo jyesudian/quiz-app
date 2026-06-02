@@ -46,21 +46,26 @@ export const CreateQuiz = () => {
             .order('position', { ascending: true });
 
           if (questionsData) {
-            const mappedQuestions = questionsData.map((q: any) => ({
-              id: q.id,
-              type: q.question_type,
-              textEn: q.text_en,
-              textTa: q.text_ta || '',
-              aiRubric: q.ai_rubric || '',
-              options: (q.question_options || []).map((opt: any) => ({
+            const mappedQuestions = questionsData.map((q: any) => {
+              const options = (q.question_options || []).map((opt: any) => ({
                 id: opt.id,
                 en: opt.text_en,
                 ta: opt.text_ta || '',
                 isCorrect: opt.is_correct || false,
                 matchEn: opt.match_text_en || '',
                 matchTa: opt.match_text_ta || ''
-              }))
-            }));
+              }));
+              return {
+                id: q.id,
+                type: q.question_type,
+                textEn: q.text_en,
+                textTa: q.text_ta || '',
+                aiRubric: q.ai_rubric || '',
+                options: options,
+                leftItems: q.question_type === 'match' ? options.map((opt: any) => ({ id: opt.id, en: opt.en, ta: opt.ta })) : undefined,
+                rightItems: q.question_type === 'match' ? options.map((opt: any) => ({ id: opt.id, en: opt.matchEn, ta: opt.matchTa })) : undefined
+              };
+            });
             setQuestions(mappedQuestions);
           }
         } else {
@@ -83,6 +88,52 @@ export const CreateQuiz = () => {
     setQuestions(newQs); 
   };
 
+  const handleLeftItemChange = (qIndex: number, itemIndex: number, field: 'en' | 'ta', value: string) => {
+    const newQs = [...questions];
+    if (!newQs[qIndex].leftItems) newQs[qIndex].leftItems = [];
+    newQs[qIndex].leftItems![itemIndex] = {
+      ...newQs[qIndex].leftItems![itemIndex],
+      [field]: value
+    };
+    setQuestions(newQs);
+  };
+
+  const handleRightItemChange = (qIndex: number, itemIndex: number, field: 'en' | 'ta', value: string) => {
+    const newQs = [...questions];
+    if (!newQs[qIndex].rightItems) newQs[qIndex].rightItems = [];
+    newQs[qIndex].rightItems![itemIndex] = {
+      ...newQs[qIndex].rightItems![itemIndex],
+      [field]: value
+    };
+    setQuestions(newQs);
+  };
+
+  const addLeftItem = (qIndex: number) => {
+    const newQs = [...questions];
+    if (!newQs[qIndex].leftItems) newQs[qIndex].leftItems = [];
+    newQs[qIndex].leftItems!.push({ en: '', ta: '' });
+    setQuestions(newQs);
+  };
+
+  const removeLeftItem = (qIndex: number, itemIndex: number) => {
+    const newQs = [...questions];
+    newQs[qIndex].leftItems = newQs[qIndex].leftItems!.filter((_, idx) => idx !== itemIndex);
+    setQuestions(newQs);
+  };
+
+  const addRightItem = (qIndex: number) => {
+    const newQs = [...questions];
+    if (!newQs[qIndex].rightItems) newQs[qIndex].rightItems = [];
+    newQs[qIndex].rightItems!.push({ en: '', ta: '' });
+    setQuestions(newQs);
+  };
+
+  const removeRightItem = (qIndex: number, itemIndex: number) => {
+    const newQs = [...questions];
+    newQs[qIndex].rightItems = newQs[qIndex].rightItems!.filter((_, idx) => idx !== itemIndex);
+    setQuestions(newQs);
+  };
+
   const handleAutoTranslate = async (qIndex: number) => {
     const q = questions[qIndex];
     if (!q.textEn || !q.textEn.trim()) {
@@ -94,7 +145,7 @@ export const CreateQuiz = () => {
       const translatedQuestion = await translateText(q.textEn);
       let translatedOptions = [...q.options];
       
-      if (q.type === 'single' || q.type === 'multiple' || q.type === 'match') {
+      if (q.type === 'single' || q.type === 'multiple') {
         translatedOptions = await Promise.all(
           q.options.map(async (opt: QuestionOption) => {
             const updatedOpt = { ...opt };
@@ -102,13 +153,48 @@ export const CreateQuiz = () => {
               const translatedOpt = await translateText(opt.en);
               updatedOpt.ta = translatedOpt;
             }
-            if (q.type === 'match' && opt.matchEn && opt.matchEn.trim()) {
-              const translatedMatch = await translateText(opt.matchEn);
-              updatedOpt.matchTa = translatedMatch;
-            }
             return updatedOpt;
           })
         );
+      } else if (q.type === 'match') {
+        let updatedLeftItems = [...(q.leftItems || [])];
+        let updatedRightItems = [...(q.rightItems || [])];
+
+        if (q.leftItems) {
+          updatedLeftItems = await Promise.all(
+            q.leftItems.map(async (opt) => {
+              const updatedOpt = { ...opt };
+              if (opt.en && opt.en.trim()) {
+                updatedOpt.ta = await translateText(opt.en);
+              }
+              return updatedOpt;
+            })
+          );
+        }
+
+        if (q.rightItems) {
+          updatedRightItems = await Promise.all(
+            q.rightItems.map(async (opt) => {
+              const updatedOpt = { ...opt };
+              if (opt.en && opt.en.trim()) {
+                updatedOpt.ta = await translateText(opt.en);
+              }
+              return updatedOpt;
+            })
+          );
+        }
+
+        setQuestions((prevQuestions) => {
+          const newQs = [...prevQuestions];
+          newQs[qIndex] = {
+            ...newQs[qIndex],
+            textTa: translatedQuestion,
+            leftItems: updatedLeftItems,
+            rightItems: updatedRightItems,
+          };
+          return newQs;
+        });
+        return;
       }
 
       setQuestions((prevQuestions) => {
@@ -140,6 +226,27 @@ export const CreateQuiz = () => {
         console.log(`Question ${i + 1} hasCorrect:`, hasCorrect);
         if (!hasCorrect) {
           toast.error(`Question ${i + 1} (${q.type === 'single' ? 'Single Choice' : 'Multiple Choice'}) must have at least one correct answer marked.`);
+          return;
+        }
+      } else if (q.type === 'match') {
+        const lefts = q.leftItems || [];
+        const rights = q.rightItems || [];
+        if (lefts.length === 0 || rights.length === 0) {
+          toast.error(`Question ${i + 1} (Match the Following) must have at least one Left Item and one Right Match.`);
+          return;
+        }
+        if (lefts.length !== rights.length) {
+          toast.error(`Question ${i + 1} (Match the Following) must have an equal number of Left Items (${lefts.length}) and Right Matches (${rights.length}).`);
+          return;
+        }
+        const hasEmptyLeft = lefts.some(item => !item.en.trim());
+        if (hasEmptyLeft) {
+          toast.error(`Question ${i + 1} (Match the Following) contains empty Left Items. Please fill all English texts.`);
+          return;
+        }
+        const hasEmptyRight = rights.some(item => !item.en.trim());
+        if (hasEmptyRight) {
+          toast.error(`Question ${i + 1} (Match the Following) contains empty Right Matches. Please fill all English matches.`);
           return;
         }
       }
@@ -194,15 +301,37 @@ export const CreateQuiz = () => {
 
         if (qError) throw qError;
 
-        if (q.type === 'single' || q.type === 'multiple' || q.type === 'match') {
+        if (q.type === 'single' || q.type === 'multiple') {
           const optionsToInsert = q.options.map((opt: any) => ({
             question_id: insertedQuestion.id,
             text_en: opt.en,
             text_ta: opt.ta || null,
             is_correct: opt.isCorrect || false,
-            match_text_en: q.type === 'match' ? (opt.matchEn || '') : null,
-            match_text_ta: q.type === 'match' ? (opt.matchTa || '') : null
+            match_text_en: null,
+            match_text_ta: null
           }));
+          const { error: optError } = await supabase.from('question_options').insert(optionsToInsert);
+          if (optError) throw optError;
+        } else if (q.type === 'match') {
+          const lefts = q.leftItems || [];
+          const rights = q.rightItems || [];
+          const maxLength = Math.max(lefts.length, rights.length);
+          
+          const optionsToInsert = [];
+          for (let idx = 0; idx < maxLength; idx++) {
+            const left = lefts[idx] || { en: '', ta: '' };
+            const right = rights[idx] || { en: '', ta: '' };
+            
+            optionsToInsert.push({
+              question_id: insertedQuestion.id,
+              text_en: left.en || '',
+              text_ta: left.ta || null,
+              is_correct: false,
+              match_text_en: right.en || '',
+              match_text_ta: right.ta || null
+            });
+          }
+
           const { error: optError } = await supabase.from('question_options').insert(optionsToInsert);
           if (optError) throw optError;
         }
@@ -286,9 +415,19 @@ export const CreateQuiz = () => {
               <div className="flex space-x-4 items-center">
                 <select className="text-sm border-gray-300 rounded border p-1" value={q.type} onChange={(e) => {
                   const newQs = [...questions];
-                  newQs[qIndex].type = e.target.value as any;
-                  if (e.target.value === 'text') newQs[qIndex].options = [];
-                  else if (newQs[qIndex].options.length === 0) newQs[qIndex].options = [{ en: '', ta: '', isCorrect: false, matchEn: '', matchTa: '' }];
+                  const newType = e.target.value as any;
+                  newQs[qIndex].type = newType;
+                  if (newType === 'text') {
+                    newQs[qIndex].options = [];
+                  } else if (newType === 'match') {
+                    newQs[qIndex].options = [];
+                    newQs[qIndex].leftItems = [{ en: '', ta: '' }, { en: '', ta: '' }];
+                    newQs[qIndex].rightItems = [{ en: '', ta: '' }, { en: '', ta: '' }];
+                  } else {
+                    newQs[qIndex].options = [{ en: '', ta: '', isCorrect: false }];
+                    newQs[qIndex].leftItems = undefined;
+                    newQs[qIndex].rightItems = undefined;
+                  }
                   setQuestions(newQs);
                 }}>
                   <option value="single">Single Choice</option>
@@ -348,33 +487,99 @@ export const CreateQuiz = () => {
               )}
 
               {q.type === 'match' && (
-                <div className="space-y-4 pl-4 border-l-2 border-gray-100">
-                  <div className="grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 hidden sm:grid">
-                    <div className="col-span-5">Left Item (English / Tamil)</div>
-                    <div className="col-span-6">Matching Right Item (English / Tamil)</div>
-                    <div className="col-span-1 text-center">Delete</div>
-                  </div>
-                  {q.options.map((opt, oIndex) => (
-                    <div key={oIndex} className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start border-b border-gray-100 pb-4 sm:pb-3">
-                      {/* Left Item Input */}
-                      <div className="col-span-1 sm:col-span-5 space-y-2">
-                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Left Item (EN)" value={opt.en} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].en = e.target.value; setQuestions(newQs); }} />
-                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Left Item (TA)" value={opt.ta} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].ta = e.target.value; setQuestions(newQs); }} />
+                <div className="space-y-6 pl-4 border-l-2 border-gray-100">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Left Column: Left Items */}
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Left Items (Keys)</h4>
+                        <span className="text-xs text-gray-500 font-bold">Total: {(q.leftItems || []).length}</span>
                       </div>
-                      {/* Matching Right Item Input */}
-                      <div className="col-span-1 sm:col-span-6 space-y-2">
-                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2" placeholder="Right Match (EN)" value={opt.matchEn || ''} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].matchEn = e.target.value; setQuestions(newQs); }} />
-                        <input type="text" className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50" placeholder="Right Match (TA)" value={opt.matchTa || ''} onChange={(e) => { const newQs = [...questions]; newQs[qIndex].options[oIndex].matchTa = e.target.value; setQuestions(newQs); }} />
+                      <div className="space-y-4">
+                        {(q.leftItems || []).map((leftOpt, oIndex) => (
+                          <div key={`left-${oIndex}`} className="flex items-start gap-2 bg-slate-50/50 p-3 rounded-xl border border-gray-100">
+                            <div className="flex-1 space-y-2">
+                              <input
+                                type="text"
+                                className="w-full border-gray-300 rounded text-sm border p-2 bg-white"
+                                placeholder={`Left Item #${oIndex + 1} (EN)`}
+                                value={leftOpt.en}
+                                onChange={(e) => handleLeftItemChange(qIndex, oIndex, 'en', e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
+                                placeholder={`Left Item #${oIndex + 1} (TA)`}
+                                value={leftOpt.ta}
+                                onChange={(e) => handleLeftItemChange(qIndex, oIndex, 'ta', e.target.value)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeLeftItem(qIndex, oIndex)}
+                              className="text-red-400 hover:text-red-600 p-1 cursor-pointer mt-1"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      {/* Delete option */}
-                      <div className="col-span-1 text-center sm:mt-3">
-                        <button type="button" onClick={() => { const newQs = [...questions]; newQs[qIndex].options = newQs[qIndex].options.filter((_, idx) => idx !== oIndex); setQuestions(newQs); }} className="text-red-400 hover:text-red-600 cursor-pointer"><Trash2 size={16} /></button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addLeftItem(qIndex)}
+                        className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1.5 rounded-lg border border-dashed border-blue-200 w-full justify-center cursor-pointer"
+                      >
+                        <Plus size={14} className="mr-1" /> Add Left Item
+                      </button>
                     </div>
-                  ))}
-                  <button type="button" onClick={() => addOption(qIndex)} className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded cursor-pointer">
-                    <Plus size={14} className="mr-1" /> Add Match Pair
-                  </button>
+
+                    {/* Right Column: Right Matches */}
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center pb-2 border-b border-gray-100">
+                        <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Right Matches (Answers)</h4>
+                        <span className="text-xs text-gray-500 font-bold">Total: {(q.rightItems || []).length}</span>
+                      </div>
+                      <div className="space-y-4">
+                        {(q.rightItems || []).map((rightOpt, oIndex) => (
+                          <div key={`right-${oIndex}`} className="flex items-start gap-2 bg-slate-50/50 p-3 rounded-xl border border-gray-100">
+                            <div className="flex-1 space-y-2">
+                              <input
+                                type="text"
+                                className="w-full border-gray-300 rounded text-sm border p-2 bg-white"
+                                placeholder={`Right Match #${oIndex + 1} (EN)`}
+                                value={rightOpt.en}
+                                onChange={(e) => handleRightItemChange(qIndex, oIndex, 'en', e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="w-full border-gray-300 rounded text-sm border p-2 bg-slate-50"
+                                placeholder={`Right Match #${oIndex + 1} (TA)`}
+                                value={rightOpt.ta}
+                                onChange={(e) => handleRightItemChange(qIndex, oIndex, 'ta', e.target.value)}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeRightItem(qIndex, oIndex)}
+                              className="text-red-400 hover:text-red-600 p-1 cursor-pointer mt-1"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addRightItem(qIndex)}
+                        className="text-xs text-blue-600 font-bold flex items-center hover:bg-blue-50 px-2 py-1.5 rounded-lg border border-dashed border-blue-200 w-full justify-center cursor-pointer"
+                      >
+                        <Plus size={14} className="mr-1" /> Add Right Match
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-150">
+                    💡 <strong>Note:</strong> Matches are paired 1-to-1 by index (i.e. Left Item #1 matches Right Match #1, Left Item #2 matches Right Match #2, etc.). Please ensure you have the same number of items on both sides.
+                  </p>
                 </div>
               )}
             </div>

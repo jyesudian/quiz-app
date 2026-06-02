@@ -48,4 +48,6 @@ export interface Question {
   textTa: string;
   aiRubric: string;
   options: QuestionOption[];
+  leftItems?: { id?: number | string; en: string; ta: string }[];
+  rightItems?: { id?: number | string; en: string; ta: string }[];
 }

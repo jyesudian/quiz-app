@@ -81,6 +81,7 @@ export const TakeQuiz = () => {
   }, [quizId, navigate, user]);
 
   const [shuffledMatches, setShuffledMatches] = useState<any[]>([]);
+  const [selectedPoolMatchId, setSelectedPoolMatchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (questions.length > 0) {
@@ -102,7 +103,42 @@ export const TakeQuiz = () => {
         }
       }
     }
+    // Clear selection on question change
+    setSelectedPoolMatchId(null);
   }, [currentQuestion, questions]);
+
+  const handleDragStart = (e: React.DragEvent, matchId: string) => {
+    e.dataTransfer.setData("matchId", matchId);
+  };
+
+  const handleDrop = (e: React.DragEvent, leftOptId: string) => {
+    e.preventDefault();
+    const matchId = e.dataTransfer.getData("matchId");
+    if (matchId) {
+      assignMatch(leftOptId, matchId);
+    }
+  };
+
+  const assignMatch = (leftOptId: string, matchId: string) => {
+    const currentMap = { ...(answers[currentQuestion] || {}) };
+    
+    // If this matchId was already assigned to another left item, remove it from there
+    Object.keys(currentMap).forEach(key => {
+      if (String(currentMap[key]) === String(matchId)) {
+        currentMap[key] = '';
+      }
+    });
+
+    currentMap[String(leftOptId)] = matchId;
+    setAnswers({ ...answers, [currentQuestion]: currentMap });
+    setSelectedPoolMatchId(null);
+  };
+
+  const removeMatch = (leftOptId: string) => {
+    const currentMap = { ...(answers[currentQuestion] || {}) };
+    currentMap[String(leftOptId)] = '';
+    setAnswers({ ...answers, [currentQuestion]: currentMap });
+  };
 
   const handleSubmit = async () => {
     if (!user || !quizId) return;
@@ -334,21 +370,28 @@ export const TakeQuiz = () => {
           )}
           {q.type === 'match' && (
             <div className="space-y-6">
-              <p className="text-xs sm:text-sm font-bold text-blue-900 bg-blue-50 p-4 rounded-xl border border-blue-150 leading-relaxed">
-                Match each item on the left with the correct option from the dropdown menu on the right.
+              <p className="text-xs sm:text-sm font-bold text-blue-905 bg-blue-50 p-4 rounded-xl border border-blue-150 leading-relaxed">
+                Drag a matching option from the pool at the bottom and drop it onto a left item's target slot. 
+                On mobile/tablet, tap a match at the bottom first, then tap the target slot.
               </p>
+              
               <div className="space-y-4">
                 {q.options.map((opt: any) => {
                   const currentMap = answers[currentQuestion] || {};
-                  const selectedVal = currentMap[String(opt.id)] || '';
+                  const matchedId = currentMap[String(opt.id)] || '';
+                  const matchedOpt = q.options.find((o: any) => String(o.id) === String(matchedId));
 
-                  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-                    const newMap = { ...currentMap, [String(opt.id)]: e.target.value };
-                    setAnswers({ ...answers, [currentQuestion]: newMap });
+                  const handleSlotClick = () => {
+                    if (selectedPoolMatchId) {
+                      assignMatch(String(opt.id), selectedPoolMatchId);
+                    }
                   };
 
                   return (
-                    <div key={opt.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-50 p-4 sm:p-5 rounded-2xl border-2 border-gray-200">
+                    <div 
+                      key={opt.id} 
+                      className="flex flex-col md:flex-row items-stretch md:items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-gray-200"
+                    >
                       {/* Left static item */}
                       <div className="flex-1">
                         <p className="text-lg font-bold text-gray-800">{opt.en}</p>
@@ -356,29 +399,87 @@ export const TakeQuiz = () => {
                       </div>
                       
                       {/* Connector Arrow */}
-                      <div className="hidden sm:flex items-center text-gray-400">
+                      <div className="hidden md:flex items-center text-gray-400">
                         <span className="text-xl">➔</span>
                       </div>
                       
-                      {/* Right match selector */}
-                      <div className="w-full sm:w-72">
-                        <select
-                          value={selectedVal}
-                          onChange={handleChange}
-                          className="w-full border-gray-300 rounded-xl text-sm sm:text-base border-2 p-3 font-bold text-gray-850 bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-600 transition-all cursor-pointer outline-none"
-                        >
-                          <option value="">-- Choose Match --</option>
-                          {shuffledMatches.map((m: any) => (
-                            <option key={m.id} value={String(m.id)}>
-                              {m.en} {isBilingual && m.ta ? `(${m.ta})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                      {/* Dropzone / Target Slot */}
+                      <div 
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleDrop(e, String(opt.id))}
+                        onClick={handleSlotClick}
+                        className={`w-full md:w-80 min-h-[64px] border-2 border-dashed rounded-xl flex items-center justify-between p-3 transition-all ${
+                          matchedOpt 
+                            ? 'border-solid border-blue-500 bg-white shadow-sm' 
+                            : selectedPoolMatchId 
+                              ? 'border-blue-400 bg-blue-50/30 hover:bg-blue-50 cursor-pointer animate-pulse' 
+                              : 'border-gray-300 bg-gray-50'
+                        }`}
+                      >
+                        {matchedOpt ? (
+                          <>
+                            <div className="flex-1">
+                              <p className="font-bold text-blue-900 text-sm sm:text-base">{matchedOpt.matchEn}</p>
+                              {isBilingual && matchedOpt.matchTa && (
+                                <p className="text-xs font-serif text-gray-500 mt-0.5">{matchedOpt.matchTa}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeMatch(String(opt.id));
+                              }}
+                              className="ml-2 text-gray-400 hover:text-red-500 text-lg font-bold w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-center w-full text-xs sm:text-sm text-gray-400 py-2">
+                            {selectedPoolMatchId ? 'Tap here to place selected item' : 'Drag match here or tap to pair'}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Shuffled Available Matches pool */}
+              {(() => {
+                const currentMap = answers[currentQuestion] || {};
+                const assignedIds = Object.values(currentMap).filter(id => id !== '');
+                const poolMatches = shuffledMatches.filter(m => !assignedIds.includes(String(m.id)));
+
+                return (
+                  <div className="mt-8 border-t border-gray-100 pt-6">
+                    <h4 className="text-sm font-bold text-gray-700 mb-4">Available Matches (Pool):</h4>
+                    <div className="flex flex-wrap gap-3">
+                      {poolMatches.map((m: any) => {
+                        const isSelected = String(m.id) === String(selectedPoolMatchId);
+                        return (
+                          <div
+                            key={m.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, String(m.id))}
+                            onClick={() => setSelectedPoolMatchId(isSelected ? null : String(m.id))}
+                            className={`px-4 py-3 bg-white border-2 rounded-xl font-bold cursor-grab active:cursor-grabbing hover:bg-blue-50/50 hover:border-blue-300 transition-all select-none ${
+                              isSelected ? 'border-blue-600 bg-blue-50 ring-4 ring-blue-50' : 'border-gray-200'
+                            }`}
+                          >
+                            <div className="text-sm sm:text-base text-gray-800">{m.en}</div>
+                            {isBilingual && m.ta && <div className="text-xs font-serif text-gray-500 font-normal mt-0.5">{m.ta}</div>}
+                          </div>
+                        );
+                      })}
+                      {poolMatches.length === 0 && (
+                        <p className="text-sm italic text-gray-450">All matches assigned. Click any item's '×' button to reset it.</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
