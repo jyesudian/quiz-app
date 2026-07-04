@@ -52,3 +52,33 @@ export interface Question {
   rightItems?: { id?: number | string; en: string; ta: string }[];
   imageUrl?: string;
 }
+
+export interface GenerationMetadata {
+  id?: number;
+  quizId?: number;
+  sourceFiles: string[];
+  aiModel: string;
+  requestedCount: number;
+  generatedCount: number;
+  generationDurationMs: number;
+  settings: any;
+  createdAt?: string;
+  createdBy?: string;
+}
+
+export interface AiGeneratedQuestion {
+  id: string; // Temporary UUID for UI
+  type: 'single' | 'multiple';
+  textEn: string;
+  textTa: string;
+  options: {
+    en: string;
+    ta: string;
+    isCorrect: boolean;
+  }[];
+  explanationEn?: string;
+  explanationTa?: string;
+  difficulty?: 'Easy' | 'Medium' | 'Hard';
+  topic?: string;
+  bloomTaxonomy?: string;
+}

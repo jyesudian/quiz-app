@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3, Share2, Trash2 } from 'lucide-react';
+import { Plus, List, Trophy, UserPlus, Lock, Snowflake, Users, Edit3, Share2, Trash2, Bot } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -230,9 +230,14 @@ export const AdminDashboard = () => {
           <h1 className="text-3xl font-extrabold text-blue-900">Admin Dashboard</h1>
           <p className="text-gray-500 mt-1">Manage quiz series, evaluate AI scoring, and view leaderboards.</p>
         </div>
-        <button onClick={() => navigate('/admin/create-quiz')} className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm transition-all flex items-center">
-          <Plus size={18} className="mr-2" /> Create New Quiz
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => navigate('/admin/generate-quiz')} className="bg-white border-2 border-blue-800 text-blue-800 hover:bg-blue-50 px-4 py-2.5 rounded-xl font-bold shadow-sm transition-all flex items-center">
+            <Bot size={18} className="mr-2" /> Generate with AI
+          </button>
+          <button onClick={() => navigate('/admin/create-quiz')} className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-2.5 rounded-xl font-bold shadow-sm transition-all flex items-center">
+            <Plus size={18} className="mr-2" /> Create New Quiz
+          </button>
+        </div>
       </div>
 
       <div className="flex space-x-1 border-b border-gray-200 mb-8 overflow-x-auto">

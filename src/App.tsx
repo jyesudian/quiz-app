@@ -9,6 +9,7 @@ import { StudentDashboard } from './pages/StudentDashboard';
 import { TakeQuiz } from './pages/TakeQuiz';
 import { StudentLeaderboard } from './pages/StudentLeaderboard';
 import { QuizResults } from './pages/QuizResults';
+import { QuizGenerator } from './pages/QuizGenerator';
 import { useAuth } from './contexts/AuthContext';
 
 const RootRedirect = () => {
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/create-quiz" element={<CreateQuiz />} />
         <Route path="/admin/edit-quiz/:id" element={<CreateQuiz />} />
+        <Route path="/admin/generate-quiz" element={<QuizGenerator />} />
       </Route>
 
       <Route element={<MainLayout requiredRole="student" />}>
