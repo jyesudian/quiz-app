@@ -211,8 +211,8 @@ export const TakeQuiz = () => {
             }
           });
 
-          const points = correctMatchesCount * 0.5;
-          const maxPointsForQ = q.options.length * 0.5;
+          const points = Math.round(correctMatchesCount * 0.5);
+          const maxPointsForQ = Math.round(q.options.length * 0.5);
 
           maxScore += (maxPointsForQ - 1);
           totalScore += points;
@@ -233,8 +233,8 @@ export const TakeQuiz = () => {
         .insert({
           quiz_id: parseInt(quizId),
           user_id: user.id,
-          score: totalScore,
-          max_score: maxScore,
+          score: Math.round(totalScore),
+          max_score: Math.round(maxScore),
           is_graded: !hasAiQuestions,
           completed_at: new Date().toISOString()
         })

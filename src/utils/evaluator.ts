@@ -65,7 +65,7 @@ export const gradeAttempt = async (attemptId: number): Promise<boolean> => {
             } else if (scoreTen >= 3.5) {
               points = 1;
             } else if (scoreTen >= 2.0) {
-              points = 0.5;
+              points = 1;
             }
 
             // Update user_answers table for this specific answer row
