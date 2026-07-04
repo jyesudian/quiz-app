@@ -18,6 +18,7 @@ export const TakeQuiz = () => {
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [attemptId, setAttemptId] = useState<number | null>(null);
   
   // Assume bilingual if any question has Tamil text
   const isBilingual = questions.some(q => q.textTa && q.textTa.trim() !== '');
@@ -26,10 +27,10 @@ export const TakeQuiz = () => {
     const fetchQuiz = async () => {
       if (!user || !quizId) return;
       try {
-        // Check if user already completed this quiz
+        // Check if user already completed or started this quiz
         const { data: existingAttempt, error: attemptCheckError } = await supabase
           .from('quiz_attempts')
-          .select('id')
+          .select('id, completed_at')
           .eq('quiz_id', quizId)
           .eq('user_id', user.id)
           .maybeSingle();
@@ -38,10 +39,35 @@ export const TakeQuiz = () => {
           console.error('Error checking attempts:', attemptCheckError);
         }
 
+        let currentAttemptId: number;
+
         if (existingAttempt) {
-          toast.error('You have already completed this quiz!');
-          navigate('/student');
-          return;
+          if (existingAttempt.completed_at) {
+            toast.error('You have already completed this quiz!');
+            navigate('/student');
+            return;
+          } else {
+            // In-progress attempt - resume it!
+            currentAttemptId = existingAttempt.id;
+            setAttemptId(currentAttemptId);
+          }
+        } else {
+          // Create new attempt record in progress (completed_at = null)
+          const { data: newAttempt, error: newAttemptError } = await supabase
+            .from('quiz_attempts')
+            .insert({
+              quiz_id: parseInt(quizId),
+              user_id: user.id,
+              score: 0,
+              max_score: 0,
+              completed_at: null
+            })
+            .select()
+            .single();
+
+          if (newAttemptError) throw newAttemptError;
+          currentAttemptId = newAttempt.id;
+          setAttemptId(currentAttemptId);
         }
 
         const { data: questionsData, error: qError } = await supabase
@@ -70,6 +96,31 @@ export const TakeQuiz = () => {
             }))
           }));
           setQuestions(mappedQuestions);
+
+          // Retrieve any previously saved answers for this attempt
+          const { data: prevAnswers, error: prevAnsError } = await supabase
+            .from('user_answers')
+            .select('*')
+            .eq('attempt_id', currentAttemptId);
+
+          if (!prevAnsError && prevAnswers && prevAnswers.length > 0) {
+            const initialAnswers: Record<number, any> = {};
+            mappedQuestions.forEach((q: any, index: number) => {
+              const prevAns = prevAnswers.find((pa: any) => pa.question_id === q.id);
+              if (prevAns) {
+                if (q.type === 'single') {
+                  initialAnswers[index] = prevAns.selected_option_id;
+                } else if (q.type === 'multiple') {
+                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : [];
+                } else if (q.type === 'text' || q.type === 'picture') {
+                  initialAnswers[index] = prevAns.text_answer || '';
+                } else if (q.type === 'match') {
+                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : {};
+                }
+              }
+            });
+            setAnswers(initialAnswers);
+          }
         }
       } catch (err) {
         toast.error('Failed to load quiz');
@@ -81,6 +132,42 @@ export const TakeQuiz = () => {
     
     fetchQuiz();
   }, [quizId, navigate, user]);
+
+  const saveAnswerToDb = async (qIndex: number, answerValue: any) => {
+    // If loading or submitting, or if attemptId isn't initialized yet, skip
+    if (isLoading || !attemptId || !questions[qIndex]) return;
+    const q = questions[qIndex];
+    
+    let selectedOptionId: number | null = null;
+    let textAnswer: string | null = null;
+    
+    if (q.type === 'single') {
+      selectedOptionId = answerValue || null;
+    } else if (q.type === 'multiple') {
+      textAnswer = answerValue ? JSON.stringify(answerValue) : null;
+    } else if (q.type === 'text' || q.type === 'picture') {
+      textAnswer = answerValue || '';
+    } else if (q.type === 'match') {
+      textAnswer = answerValue ? JSON.stringify(answerValue) : null;
+    }
+
+    try {
+      await supabase
+        .from('user_answers')
+        .upsert({
+          attempt_id: attemptId,
+          question_id: q.id,
+          selected_option_id: selectedOptionId,
+          text_answer: textAnswer,
+          ai_score: 0,
+          is_correct: false
+        }, {
+          onConflict: 'attempt_id,question_id'
+        });
+    } catch (err) {
+      console.error("Exception in auto-save:", err);
+    }
+  };
 
   const [shuffledMatches, setShuffledMatches] = useState<any[]>([]);
   const [selectedPoolMatchId, setSelectedPoolMatchId] = useState<string | null>(null);
@@ -134,19 +221,24 @@ export const TakeQuiz = () => {
     currentMap[String(leftOptId)] = matchId;
     setAnswers({ ...answers, [currentQuestion]: currentMap });
     setSelectedPoolMatchId(null);
+    saveAnswerToDb(currentQuestion, currentMap);
   };
 
   const removeMatch = (leftOptId: string) => {
     const currentMap = { ...(answers[currentQuestion] || {}) };
     currentMap[String(leftOptId)] = '';
     setAnswers({ ...answers, [currentQuestion]: currentMap });
+    saveAnswerToDb(currentQuestion, currentMap);
   };
 
   const handleSubmit = async () => {
-    if (!user || !quizId) return;
+    if (!user || !quizId || !attemptId) return;
     setIsSubmitting(true);
 
     try {
+      // 1. Save current question answer just in case
+      await saveAnswerToDb(currentQuestion, answers[currentQuestion]);
+
       let totalScore = 0;
       let maxScore = questions.length; // 1 point per question for now
 
@@ -160,48 +252,35 @@ export const TakeQuiz = () => {
         let score = 0;
         let isCorrect = false;
 
+        let selectedOptionId: number | null = null;
+        let textAnswer: string | null = null;
+
         if (q.type === 'single') {
+          selectedOptionId = studentAnswer || null;
           const selectedOption = q.options.find(o => o.id === studentAnswer);
           if (selectedOption && selectedOption.isCorrect) {
             score = 1;
             isCorrect = true;
           }
-          processedAnswers.push({
-            question_id: q.id,
-            selected_option_id: studentAnswer || null,
-            text_answer: null,
-            ai_score: score,
-            is_correct: isCorrect
-          });
           totalScore += score;
         } else if (q.type === 'multiple') {
-          const studentSelections = studentAnswer || []; // Array of option IDs
+          textAnswer = studentAnswer ? JSON.stringify(studentAnswer) : null;
+          const studentSelections = studentAnswer || [];
           const correctOptionIds = q.options.filter(o => o.isCorrect).map(o => o.id);
           
           isCorrect = correctOptionIds.length === studentSelections.length &&
             correctOptionIds.every(id => studentSelections.includes(id));
           
           score = isCorrect ? 1 : 0;
-          
-          processedAnswers.push({
-            question_id: q.id,
-            selected_option_id: null,
-            text_answer: JSON.stringify(studentSelections),
-            ai_score: score,
-            is_correct: isCorrect
-          });
           totalScore += score;
         } else if (q.type === 'text' || q.type === 'picture') {
-          processedAnswers.push({
-            question_id: q.id,
-            selected_option_id: null,
-            text_answer: studentAnswer || '',
-            ai_score: 0,
-            is_correct: false
-          });
-          maxScore += 1;
+          textAnswer = studentAnswer || '';
+          // AI Graded, defaults to 0 score here
+          score = 0;
+          isCorrect = false;
         } else if (q.type === 'match') {
-          const studentMatches = answers[i] || {};
+          textAnswer = studentAnswer ? JSON.stringify(studentAnswer) : null;
+          const studentMatches = studentAnswer || {};
           let correctMatchesCount = 0;
 
           q.options.forEach((opt: any) => {
@@ -216,48 +295,43 @@ export const TakeQuiz = () => {
 
           maxScore += (maxPointsForQ - 1);
           totalScore += points;
-
-          processedAnswers.push({
-            question_id: q.id,
-            selected_option_id: null,
-            text_answer: JSON.stringify(studentMatches),
-            ai_score: points,
-            is_correct: correctMatchesCount === q.options.length
-          });
+          score = points;
+          isCorrect = correctMatchesCount === q.options.length;
         }
+
+        processedAnswers.push({
+          attempt_id: attemptId,
+          question_id: q.id,
+          selected_option_id: selectedOptionId,
+          text_answer: textAnswer,
+          ai_score: score,
+          is_correct: isCorrect
+        });
       }
 
-      // Insert Attempt
-      const { data: attemptData, error: attemptError } = await supabase
+      // Upsert all answers to DB (this updates their scored value)
+      const { error: answersError } = await supabase
+        .from('user_answers')
+        .upsert(processedAnswers, { onConflict: 'attempt_id,question_id' });
+
+      if (answersError) throw answersError;
+
+      // Update Attempt to completed status
+      const { error: attemptError } = await supabase
         .from('quiz_attempts')
-        .insert({
-          quiz_id: parseInt(quizId),
-          user_id: user.id,
+        .update({
           score: Math.round(totalScore),
           max_score: Math.round(maxScore),
           is_graded: !hasAiQuestions,
           completed_at: new Date().toISOString()
         })
-        .select()
-        .single();
+        .eq('id', attemptId);
 
       if (attemptError) throw attemptError;
 
-      // Insert Answers
-      const answersToInsert = processedAnswers.map(pa => ({
-        ...pa,
-        attempt_id: attemptData.id
-      }));
-
-      const { error: answersError } = await supabase
-        .from('user_answers')
-        .insert(answersToInsert);
-
-      if (answersError) throw answersError;
-
       // Trigger asynchronous background grading if necessary
-      if (hasAiQuestions && attemptData) {
-        gradeAttempt(attemptData.id).catch(e => {
+      if (hasAiQuestions) {
+        gradeAttempt(attemptId).catch(e => {
           console.error("Error in background grading helper:", e);
         });
       }
@@ -323,22 +397,27 @@ export const TakeQuiz = () => {
               : answers[currentQuestion] === opt.id;
 
             const handleOptionClick = () => {
+              let newAnswer: any;
               if (q.type === 'single') {
+                newAnswer = opt.id;
                 setAnswers({ ...answers, [currentQuestion]: opt.id });
               } else {
                 const currentSelections = answers[currentQuestion] || [];
                 if (currentSelections.includes(opt.id)) {
+                  newAnswer = currentSelections.filter((id: any) => id !== opt.id);
                   setAnswers({
                     ...answers,
-                    [currentQuestion]: currentSelections.filter((id: any) => id !== opt.id)
+                    [currentQuestion]: newAnswer
                   });
                 } else {
+                  newAnswer = [...currentSelections, opt.id];
                   setAnswers({
                     ...answers,
-                    [currentQuestion]: [...currentSelections, opt.id]
+                    [currentQuestion]: newAnswer
                   });
                 }
               }
+              saveAnswerToDb(currentQuestion, newAnswer);
             };
 
             return (
@@ -359,7 +438,14 @@ export const TakeQuiz = () => {
             );
           })}
           {(q.type === 'text' || q.type === 'picture') && (
-            <textarea className="w-full border-gray-300 border-2 rounded-2xl p-5 text-lg focus:ring-4 focus:border-blue-500" rows={5} placeholder="Type your answer here..." value={answers[currentQuestion] || ''} onChange={(e) => setAnswers({...answers, [currentQuestion]: e.target.value})}></textarea>
+            <textarea 
+              className="w-full border-gray-300 border-2 rounded-2xl p-5 text-lg focus:ring-4 focus:border-blue-500" 
+              rows={5} 
+              placeholder="Type your answer here..." 
+              value={answers[currentQuestion] || ''} 
+              onChange={(e) => setAnswers({...answers, [currentQuestion]: e.target.value})}
+              onBlur={() => saveAnswerToDb(currentQuestion, answers[currentQuestion])}
+            ></textarea>
           )}
           {q.type === 'match' && (
             <div className="space-y-6">
@@ -479,13 +565,31 @@ export const TakeQuiz = () => {
       </div>
 
       <div className="flex justify-between items-center">
-        <button disabled={currentQuestion === 0 || isSubmitting} onClick={() => setCurrentQuestion((prev) => prev - 1)} className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-300 text-gray-700 disabled:opacity-50">Previous</button>
+        <button 
+          disabled={currentQuestion === 0 || isSubmitting} 
+          onClick={async () => {
+            await saveAnswerToDb(currentQuestion, answers[currentQuestion]);
+            setCurrentQuestion((prev) => prev - 1);
+          }} 
+          className="px-6 py-3 rounded-xl font-bold text-sm bg-white border border-gray-300 text-gray-700 disabled:opacity-50"
+        >
+          Previous
+        </button>
         {currentQuestion === questions.length - 1 ? (
           <button disabled={isSubmitting} onClick={handleSubmit} className="bg-green-600 text-white px-8 py-3 rounded-xl font-bold shadow-md disabled:opacity-50">
             {isSubmitting ? 'Grading & Submitting...' : 'Submit Quiz'}
           </button>
         ) : (
-          <button disabled={isSubmitting} onClick={() => setCurrentQuestion((prev) => prev + 1)} className="bg-blue-800 text-white px-8 py-3 rounded-xl font-bold shadow-sm">Next</button>
+          <button 
+            disabled={isSubmitting} 
+            onClick={async () => {
+              await saveAnswerToDb(currentQuestion, answers[currentQuestion]);
+              setCurrentQuestion((prev) => prev + 1);
+            }} 
+            className="bg-blue-800 text-white px-8 py-3 rounded-xl font-bold shadow-sm"
+          >
+            Next
+          </button>
         )}
       </div>
     </div>
