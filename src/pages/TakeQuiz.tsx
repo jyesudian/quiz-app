@@ -152,7 +152,7 @@ export const TakeQuiz = () => {
     }
 
     try {
-      await supabase
+      const { error } = await supabase
         .from('user_answers')
         .upsert({
           attempt_id: attemptId,
@@ -164,8 +164,11 @@ export const TakeQuiz = () => {
         }, {
           onConflict: 'attempt_id,question_id'
         });
-    } catch (err) {
+        
+      if (error) throw error;
+    } catch (err: any) {
       console.error("Exception in auto-save:", err);
+      toast.error('Failed to save answer. The quiz may have been updated. Please refresh the page.');
     }
   };
 
