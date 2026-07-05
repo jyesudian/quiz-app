@@ -281,6 +281,7 @@ export const TakeQuiz = () => {
           // AI Graded, defaults to 0 score here
           score = 0;
           isCorrect = false;
+          maxScore += 1; // AI grading awards up to 2 points, so add 1 to the base 1 point
         } else if (q.type === 'match') {
           textAnswer = studentAnswer ? JSON.stringify(studentAnswer) : null;
           const studentMatches = studentAnswer || {};
