@@ -1,5 +1,21 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
+// Safari ReadableStream async iterator polyfill for pdfjs-dist
+if (typeof ReadableStream !== 'undefined' && !ReadableStream.prototype[Symbol.asyncIterator]) {
+  (ReadableStream.prototype as any)[Symbol.asyncIterator] = async function* () {
+    const reader = this.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+}
+
 // Configure the worker source using UNPKG CDN for the specific version
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
