@@ -35,7 +35,7 @@ export const StudentDashboard = () => {
 
       const { data: attemptsList, error: attemptsError } = await supabase
         .from('quiz_attempts')
-        .select('id, quiz_id, is_graded')
+        .select('id, quiz_id, is_graded, completed_at')
         .eq('user_id', user.id);
       if (attemptsError) throw attemptsError;
  
@@ -53,10 +53,13 @@ export const StudentDashboard = () => {
            isPending: myEnrollment && myEnrollment.status === 'pending',
            quizzes: (quizzesList || []).filter((q: any) => q.series_id === s.id).map((q: any) => {
              const attempt = (attemptsList || []).find((a: any) => a.quiz_id === q.id);
+             const isCompleted = !!attempt && attempt.completed_at !== null;
+             const isInProgress = !!attempt && !attempt.completed_at;
              return {
                id: q.id,
                title: q.title,
-               isAttempted: !!attempt,
+               isAttempted: isCompleted,
+               isInProgress: isInProgress,
                isGraded: attempt ? attempt.is_graded : true,
                attemptId: attempt ? attempt.id : null
              };
@@ -213,10 +216,17 @@ export const StudentDashboard = () => {
                                 <span className="h-1.5 w-1.5 bg-amber-500 rounded-full animate-ping"></span>
                               )}
                             </div>
+                          ) : quiz.isInProgress ? (
+                            <div className="h-5 w-5 rounded-full border-2 border-amber-500 mr-3 flex items-center justify-center">
+                              <div className="h-1.5 w-1.5 bg-amber-500 rounded-full animate-ping"></div>
+                            </div>
                           ) : (
                             <div className="h-5 w-5 rounded-full border-2 border-blue-500 mr-3 flex items-center justify-center"><div className="h-1.5 w-1.5 bg-blue-500 rounded-full"></div></div>
                           )}
                           <span className={`font-bold ${quiz.isAttempted && quiz.isGraded ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{quiz.title}</span>
+                          {quiz.isInProgress && (
+                            <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">In Progress</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           {quiz.isAttempted ? (
@@ -233,6 +243,10 @@ export const StudentDashboard = () => {
                                 View Results
                               </button>
                             </div>
+                          ) : quiz.isInProgress ? (
+                            <button onClick={() => navigate(`/student/quiz/${quiz.id}`)} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center">
+                              <Play size={12} className="mr-1.5 fill-current" /> Resume Quiz
+                            </button>
                           ) : (
                             <button onClick={() => navigate(`/student/quiz/${quiz.id}`)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center">
                               <Play size={12} className="mr-1.5 fill-current" /> Take Quiz

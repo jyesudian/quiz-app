@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { XCircle, CheckCircle } from 'lucide-react';
+import { XCircle, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,19 +19,210 @@ export const TakeQuiz = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [attemptId, setAttemptId] = useState<number | null>(null);
+  const [isAlreadyCompleted, setIsAlreadyCompleted] = useState<boolean>(false);
+  const [quizInfo, setQuizInfo] = useState<{ id: number; title: string; seriesTitle?: string } | null>(null);
+  const [errorState, setErrorState] = useState<{
+    type: 'NOT_FOUND' | 'UNAUTHORIZED' | 'PENDING_APPROVAL' | 'DRAFT' | 'ERROR' | 'EMPTY';
+    title: string;
+    message: string;
+  } | null>(null);
   
   // Assume bilingual if any question has Tamil text
   const isBilingual = questions.some(q => q.textTa && q.textTa.trim() !== '');
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchQuiz = async () => {
       if (!user || !quizId) return;
+      setIsLoading(true);
+      setErrorState(null);
+
+      const parsedQuizId = parseInt(quizId);
+      if (isNaN(parsedQuizId)) {
+        if (mounted) {
+          setErrorState({
+            type: 'NOT_FOUND',
+            title: 'Quiz Not Found',
+            message: 'The requested quiz identifier is invalid.'
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
-        // Check if user already completed or started this quiz
+        // Step 1: Fetch Quiz metadata
+        const { data: quizData, error: quizError } = await supabase
+          .from('quizzes')
+          .select(`id, title, status, series_id, quiz_series(id, title, requires_approval, is_frozen)`)
+          .eq('id', parsedQuizId)
+          .maybeSingle();
+
+        if (quizError) {
+          console.error('Error fetching quiz metadata:', quizError);
+          if (mounted) {
+            setErrorState({
+              type: 'ERROR',
+              title: 'Failed to Load Quiz',
+              message: 'An error occurred while communicating with the server: ' + (quizError.message || 'Network error')
+            });
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        // If quiz is not visible via RLS, investigate why to give a clear message
+        if (!quizData) {
+          let pendingMessage = 'Quiz not found, or you do not have permission to view it.';
+          let errorType: 'NOT_FOUND' | 'UNAUTHORIZED' | 'PENDING_APPROVAL' = 'UNAUTHORIZED';
+
+          try {
+            interface EnrollmentWithSeries {
+              status: string;
+              series_id: number;
+              quiz_series?: { title?: string } | null;
+            }
+            const { data: myEnrollments } = await supabase
+              .from('series_enrollments')
+              .select('status, series_id, quiz_series(title)')
+              .eq('user_id', user.id);
+
+            const enrollmentsList = (myEnrollments || []) as unknown as EnrollmentWithSeries[];
+            const pending = enrollmentsList.find((e) => e.status === 'pending');
+            if (pending) {
+              const seriesTitle = pending.quiz_series?.title || 'this study series';
+              pendingMessage = `Your enrollment request for "${seriesTitle}" is currently pending administrator approval. Once approved, you will be able to take this quiz.`;
+              errorType = 'PENDING_APPROVAL';
+            } else {
+              pendingMessage = 'You must be enrolled and approved in this quiz series before attempting this quiz. Please join the series from your Student Dashboard.';
+            }
+          } catch (e) {
+            console.warn('Could not inspect enrollments:', e);
+          }
+
+          if (mounted) {
+            setErrorState({
+              type: errorType,
+              title: errorType === 'PENDING_APPROVAL' ? 'Enrollment Pending' : 'Access Restricted',
+              message: pendingMessage
+            });
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        if (quizData.status !== 'published' && user.role !== 'admin') {
+          if (mounted) {
+            setErrorState({
+              type: 'DRAFT',
+              title: 'Quiz Not Available',
+              message: `"${quizData.title}" is currently a draft and is not published for attempts yet.`
+            });
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        interface QuizWithSeriesMetadata {
+          id: number;
+          title: string;
+          status: string;
+          series_id: number;
+          quiz_series?: {
+            id: number;
+            title: string;
+            requires_approval: boolean;
+            is_frozen: boolean;
+          } | null;
+        }
+        const typedQuiz = quizData as unknown as QuizWithSeriesMetadata;
+
+        if (mounted) {
+          setQuizInfo({
+            id: typedQuiz.id,
+            title: typedQuiz.title,
+            seriesTitle: typedQuiz.quiz_series?.title
+          });
+        }
+
+        // Step 2: Fetch Questions BEFORE initializing any attempt
+        const { data: questionsData, error: qError } = await supabase
+          .from('questions')
+          .select(`*, question_options(*)`)
+          .eq('quiz_id', parsedQuizId)
+          .order('position', { ascending: true });
+
+        if (qError) {
+          console.error('Error fetching questions:', qError);
+          if (mounted) {
+            setErrorState({
+              type: 'ERROR',
+              title: 'Failed to Load Questions',
+              message: 'Failed to load questions for this quiz: ' + (qError.message || 'Please check your connection.')
+            });
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        if (!questionsData || questionsData.length === 0) {
+          if (mounted) {
+            setErrorState({
+              type: 'EMPTY',
+              title: 'No Questions Found',
+              message: 'This quiz does not have any questions configured yet. Please check back later.'
+            });
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        // Step 3: Map Questions
+        interface RawDbQuestionOption {
+          id: number;
+          text_en: string;
+          text_ta?: string | null;
+          is_correct: boolean;
+          match_text_en?: string | null;
+          match_text_ta?: string | null;
+        }
+        interface RawDbQuestion {
+          id: number;
+          question_type: 'single' | 'multiple' | 'text' | 'match' | 'picture';
+          text_en: string;
+          text_ta?: string | null;
+          ai_rubric?: string | null;
+          image_url?: string | null;
+          question_options?: RawDbQuestionOption[];
+        }
+        const rawQuestions = (questionsData || []) as unknown as RawDbQuestion[];
+        const mappedQuestions = rawQuestions.map((q) => ({
+          id: q.id,
+          type: q.question_type,
+          textEn: q.text_en,
+          textTa: q.text_ta || '',
+          aiRubric: q.ai_rubric || '',
+          imageUrl: q.image_url || '',
+          options: (q.question_options || []).map((opt) => ({
+            id: opt.id,
+            en: opt.text_en,
+            ta: opt.text_ta || '',
+            isCorrect: opt.is_correct,
+            matchEn: opt.match_text_en || '',
+            matchTa: opt.match_text_ta || ''
+          }))
+        }));
+
+        if (mounted) {
+          setQuestions(mappedQuestions);
+        }
+
+        // Step 4: Check existing attempt or initialize ONLY after questions are confirmed
         const { data: existingAttempt, error: attemptCheckError } = await supabase
           .from('quiz_attempts')
-          .select('id, completed_at')
-          .eq('quiz_id', quizId)
+          .select('id, score, max_score, completed_at')
+          .eq('quiz_id', parsedQuizId)
           .eq('user_id', user.id)
           .maybeSingle();
 
@@ -43,94 +234,134 @@ export const TakeQuiz = () => {
 
         if (existingAttempt) {
           if (existingAttempt.completed_at) {
-            toast.error('You have already completed this quiz!');
-            navigate('/student');
+            if (mounted) {
+              setIsAlreadyCompleted(true);
+              setIsLoading(false);
+            }
             return;
           } else {
             // In-progress attempt - resume it!
             currentAttemptId = existingAttempt.id;
-            setAttemptId(currentAttemptId);
+            if (mounted) {
+              setAttemptId(currentAttemptId);
+            }
           }
         } else {
+          // Calculate canonical max score for this attempt
+          let calculatedMaxScore = 0;
+          for (const q of mappedQuestions) {
+            if (q.type === 'single' || q.type === 'multiple') {
+              calculatedMaxScore += 1;
+            } else if (q.type === 'text' || q.type === 'picture') {
+              calculatedMaxScore += 2;
+            } else if (q.type === 'match') {
+              calculatedMaxScore += Math.round((q.options?.length || 0) * 0.5);
+            }
+          }
+
           // Create new attempt record in progress (completed_at = null)
           const { data: newAttempt, error: newAttemptError } = await supabase
             .from('quiz_attempts')
             .insert({
-              quiz_id: parseInt(quizId),
+              quiz_id: parsedQuizId,
               user_id: user.id,
               score: 0,
-              max_score: 0,
+              max_score: calculatedMaxScore,
               completed_at: null
             })
             .select()
             .single();
 
-          if (newAttemptError) throw newAttemptError;
-          currentAttemptId = newAttempt.id;
-          setAttemptId(currentAttemptId);
-        }
+          if (newAttemptError) {
+            // Check for concurrent attempt creation race condition
+            const { data: retryAttempt } = await supabase
+              .from('quiz_attempts')
+              .select('id, score, max_score, completed_at')
+              .eq('quiz_id', parsedQuizId)
+              .eq('user_id', user.id)
+              .maybeSingle();
 
-        const { data: questionsData, error: qError } = await supabase
-          .from('questions')
-          .select(`*, question_options(*)`)
-          .eq('quiz_id', quizId)
-          .order('position', { ascending: true });
-
-        if (qError) throw qError;
-
-        if (questionsData) {
-          const mappedQuestions = questionsData.map((q: any) => ({
-            id: q.id,
-            type: q.question_type,
-            textEn: q.text_en,
-            textTa: q.text_ta || '',
-            aiRubric: q.ai_rubric || '', // Hidden from student, but needed for submission reference
-            imageUrl: q.image_url || '',
-            options: (q.question_options || []).map((opt: any) => ({
-              id: opt.id,
-              en: opt.text_en,
-              ta: opt.text_ta || '',
-              isCorrect: opt.is_correct, // Needed for grading
-              matchEn: opt.match_text_en || '',
-              matchTa: opt.match_text_ta || ''
-            }))
-          }));
-          setQuestions(mappedQuestions);
-
-          // Retrieve any previously saved answers for this attempt
-          const { data: prevAnswers, error: prevAnsError } = await supabase
-            .from('user_answers')
-            .select('*')
-            .eq('attempt_id', currentAttemptId);
-
-          if (!prevAnsError && prevAnswers && prevAnswers.length > 0) {
-            const initialAnswers: Record<number, any> = {};
-            mappedQuestions.forEach((q: any, index: number) => {
-              const prevAns = prevAnswers.find((pa: any) => pa.question_id === q.id);
-              if (prevAns) {
-                if (q.type === 'single') {
-                  initialAnswers[index] = prevAns.selected_option_id;
-                } else if (q.type === 'multiple') {
-                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : [];
-                } else if (q.type === 'text' || q.type === 'picture') {
-                  initialAnswers[index] = prevAns.text_answer || '';
-                } else if (q.type === 'match') {
-                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : {};
+            if (retryAttempt) {
+              if (retryAttempt.completed_at) {
+                if (mounted) {
+                  setIsAlreadyCompleted(true);
+                  setIsLoading(false);
                 }
+                return;
               }
-            });
-            setAnswers(initialAnswers);
+              currentAttemptId = retryAttempt.id;
+            } else {
+              throw newAttemptError;
+            }
+          } else {
+            currentAttemptId = newAttempt.id;
+          }
+
+          if (mounted) {
+            setAttemptId(currentAttemptId);
           }
         }
+
+        // Step 5: Retrieve any previously saved answers for this attempt
+        const { data: prevAnswers, error: prevAnsError } = await supabase
+          .from('user_answers')
+          .select('*')
+          .eq('attempt_id', currentAttemptId);
+
+        if (!prevAnsError && prevAnswers && prevAnswers.length > 0 && mounted) {
+          interface SavedUserAnswer {
+            question_id: number;
+            selected_option_id?: number | null;
+            text_answer?: string | null;
+          }
+          const savedAnswersList = prevAnswers as unknown as SavedUserAnswer[];
+          const initialAnswers: Record<number, unknown> = {};
+          mappedQuestions.forEach((q, index: number) => {
+            const prevAns = savedAnswersList.find((pa) => pa.question_id === q.id);
+            if (prevAns) {
+              if (q.type === 'single') {
+                initialAnswers[index] = prevAns.selected_option_id;
+              } else if (q.type === 'multiple') {
+                try {
+                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : [];
+                } catch {
+                  initialAnswers[index] = [];
+                }
+              } else if (q.type === 'text' || q.type === 'picture') {
+                initialAnswers[index] = prevAns.text_answer || '';
+              } else if (q.type === 'match') {
+                try {
+                  initialAnswers[index] = prevAns.text_answer ? JSON.parse(prevAns.text_answer) : {};
+                } catch {
+                  initialAnswers[index] = {};
+                }
+              }
+            }
+          });
+          setAnswers(initialAnswers);
+        }
       } catch (err) {
-        toast.error('Failed to load quiz');
-        navigate('/student');
+        console.error('Fatal quiz loading error:', err);
+        const errMsg = err instanceof Error ? err.message : 'An unexpected error occurred while loading the quiz.';
+        if (mounted) {
+          setErrorState({
+            type: 'ERROR',
+            title: 'Failed to Load Quiz',
+            message: errMsg
+          });
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
     
     fetchQuiz();
+
+    return () => {
+      mounted = false;
+    };
   }, [quizId, navigate, user]);
 
   const saveAnswerToDb = async (qIndex: number, answerValue: any) => {
@@ -235,7 +466,7 @@ export const TakeQuiz = () => {
   };
 
   const handleSubmit = async () => {
-    if (!user || !quizId || !attemptId) return;
+    if (!user || !quizId || !attemptId || isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
 
     try {
@@ -349,8 +580,98 @@ export const TakeQuiz = () => {
     }
   };
 
-  if (isLoading) return <div className="text-center py-8">Loading quiz...</div>;
-  if (questions.length === 0) return <div className="text-center py-8">No questions found for this quiz.</div>;
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-white rounded-3xl shadow-sm p-10 border border-blue-100 flex flex-col items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-900 mb-4"></div>
+          <p className="text-lg font-bold text-blue-900">Loading quiz...</p>
+          <p className="text-sm text-gray-500 mt-1">Preparing questions and study materials</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAlreadyCompleted) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-white rounded-3xl shadow-sm p-10 border border-blue-100">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-8 h-8 text-blue-700" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Quiz Already Completed</h2>
+          <p className="text-gray-600 mb-6">
+            You have already completed and submitted this quiz. You can review your detailed answers and grading report.
+          </p>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => navigate(`/quiz-results/${quizId}`)}
+              className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-2.5 rounded-xl font-bold transition-all cursor-pointer"
+            >
+              View Results
+            </button>
+            <button
+              onClick={() => navigate('/student')}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-xl font-bold transition-all cursor-pointer"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (errorState) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-white rounded-3xl shadow-sm p-10 border border-amber-100">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            {errorState.type === 'EMPTY' ? (
+              <AlertTriangle className="w-8 h-8 text-amber-600" />
+            ) : (
+              <XCircle className="w-8 h-8 text-red-600" />
+            )}
+          </div>
+          <h2 className="text-2xl font-extrabold text-gray-900 mb-2">{errorState.title}</h2>
+          <p className="text-gray-600 mb-6 max-w-lg mx-auto">{errorState.message}</p>
+          <div className="flex justify-center gap-4">
+            {errorState.type === 'ERROR' && (
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-2.5 rounded-xl font-bold transition-all cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/student')}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2.5 rounded-xl font-bold transition-all cursor-pointer"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-white rounded-3xl shadow-sm p-10 border border-blue-100">
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">No Questions Available</h2>
+          <p className="text-gray-500 mb-6">No questions were found for this quiz.</p>
+          <button
+            onClick={() => navigate('/student')}
+            className="bg-blue-800 text-white px-6 py-2.5 rounded-xl font-bold"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const q = questions[currentQuestion];
 
@@ -380,6 +701,7 @@ export const TakeQuiz = () => {
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-8">
         <button onClick={() => navigate('/student')} className="text-gray-500 hover:text-gray-800 flex items-center text-sm font-medium"><XCircle className="w-5 h-5 mr-1" /> Exit Quiz</button>
+        {quizInfo && <div className="text-sm font-bold text-gray-700 hidden sm:block">{quizInfo.title}</div>}
         <div className="text-sm font-bold text-blue-800 bg-blue-100 px-3 py-1 rounded-full">Question {currentQuestion + 1} of {questions.length}</div>
       </div>
 

@@ -85,13 +85,13 @@ export const QuizResults: React.FC = () => {
         const quizData = quizzes[0];
         setQuiz(quizData);
 
-        // 3. Fetch user's latest attempt for this quiz
+        // 3. Fetch user's latest attempt for this quiz (prefer completed attempts)
         const { data: attempts, error: attemptError } = await supabase
           .from('quiz_attempts')
           .select('*')
           .eq('quiz_id', parseInt(quizId))
           .eq('user_id', targetUserId)
-          .order('completed_at', { ascending: false })
+          .order('completed_at', { ascending: false, nullsFirst: false })
           .limit(1);
 
         if (attemptError) throw attemptError;
@@ -168,7 +168,7 @@ export const QuizResults: React.FC = () => {
 
   useEffect(() => {
     const runGrading = async () => {
-      if (attempt && !attempt.is_graded && !gradingInProgressRef.current) {
+      if (attempt && attempt.completed_at && !attempt.is_graded && !gradingInProgressRef.current) {
         gradingInProgressRef.current = true;
         const success = await gradeAttempt(attempt.id);
         if (success) {
@@ -179,7 +179,7 @@ export const QuizResults: React.FC = () => {
       }
     };
     runGrading();
-  }, [attempt?.id, attempt?.is_graded]);
+  }, [attempt?.id, attempt?.completed_at, attempt?.is_graded]);
 
   const handleDownloadPDF = () => {
     if (!quiz || !attempt || !studentProfile) return;
@@ -230,15 +230,28 @@ export const QuizResults: React.FC = () => {
       doc.text(quiz.quiz_series?.title || 'N/A', 40, yOffset + 12);
 
       // Metadata block (Right Column)
+      const pdfCanonicalMaxScore = questions.reduce((sum, q) => {
+        if (q.type === 'single' || q.type === 'multiple') return sum + 1;
+        if (q.type === 'text' || q.type === 'picture') return sum + 2;
+        if (q.type === 'match') return sum + Math.round((q.options?.length || 0) * 0.5);
+        return sum + 1;
+      }, 0);
+      const pdfEffectiveMaxScore = (attempt.max_score && attempt.max_score > 0)
+        ? attempt.max_score
+        : (pdfCanonicalMaxScore > 0 ? pdfCanonicalMaxScore : 0);
+      const pdfEffectiveScore = attempt.score || 0;
+      const pdfPercentage = pdfEffectiveMaxScore > 0 ? Math.round((pdfEffectiveScore / pdfEffectiveMaxScore) * 100) : 0;
+      const pdfCompletedDate = attempt.completed_at ? new Date(attempt.completed_at).toLocaleDateString() : 'Incomplete';
+
       doc.setFont('Helvetica', 'bold');
       doc.text('Score:', 120, yOffset);
       doc.setFont('Helvetica', 'normal');
-      doc.text(`${attempt.score} / ${attempt.max_score} (${Math.round((attempt.score / attempt.max_score) * 100)}%)`, 150, yOffset);
+      doc.text(`${pdfEffectiveScore} / ${pdfEffectiveMaxScore} (${pdfPercentage}%)`, 150, yOffset);
 
       doc.setFont('Helvetica', 'bold');
       doc.text('Completed At:', 120, yOffset + 6);
       doc.setFont('Helvetica', 'normal');
-      doc.text(new Date(attempt.completed_at).toLocaleDateString(), 150, yOffset + 6);
+      doc.text(pdfCompletedDate, 150, yOffset + 6);
 
       doc.setFont('Helvetica', 'bold');
       doc.text('Overall Rank:', 120, yOffset + 12);
@@ -429,7 +442,23 @@ export const QuizResults: React.FC = () => {
     );
   }
 
-  const percentage = attempt ? Math.round((attempt.score / attempt.max_score) * 100) : 0;
+  const canonicalMaxScore = questions.reduce((sum, q) => {
+    if (q.type === 'single' || q.type === 'multiple') return sum + 1;
+    if (q.type === 'text' || q.type === 'picture') return sum + 2;
+    if (q.type === 'match') return sum + Math.round((q.options?.length || 0) * 0.5);
+    return sum + 1;
+  }, 0);
+
+  const effectiveMaxScore = (attempt?.max_score && attempt.max_score > 0)
+    ? attempt.max_score
+    : (canonicalMaxScore > 0 ? canonicalMaxScore : 0);
+
+  const effectiveScore = attempt?.score || 0;
+  const percentage = effectiveMaxScore > 0 ? Math.round((effectiveScore / effectiveMaxScore) * 100) : 0;
+  const isCompleted = attempt && attempt.completed_at !== null;
+  const attemptedDateText = attempt?.completed_at
+    ? new Date(attempt.completed_at).toLocaleDateString()
+    : (attempt?.started_at ? `Started on ${new Date(attempt.started_at).toLocaleDateString()} (Incomplete)` : 'Incomplete');
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -440,6 +469,27 @@ export const QuizResults: React.FC = () => {
       >
         <ArrowLeft className="w-4 h-4 mr-2" /> Back
       </button>
+
+      {/* In-Progress Warning Banner if Attempt is Not Completed */}
+      {!isCompleted && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full bg-amber-500 animate-ping"></span>
+            <div>
+              <h4 className="font-bold text-amber-900 text-base">Attempt In Progress (Not Submitted)</h4>
+              <p className="text-xs text-amber-700 mt-0.5">This quiz attempt was started but has not yet been submitted by the student.</p>
+            </div>
+          </div>
+          {currentUser?.id === targetUserId && (
+            <button
+              onClick={() => navigate(`/student/quiz/${quizId}`)}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap"
+            >
+              Resume Quiz
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Header / Banner */}
       <div className="bg-gradient-to-r from-blue-950 to-blue-900 text-white rounded-3xl shadow-xl p-8 mb-8 relative overflow-hidden border border-blue-800">
@@ -454,16 +504,16 @@ export const QuizResults: React.FC = () => {
             </span>
             <h1 className="text-3xl font-extrabold mt-2 tracking-tight">{quiz?.title}</h1>
             <p className="text-blue-200 text-sm mt-1">
-              Results for {studentProfile?.full_name} • Attempted on {new Date(attempt?.completed_at).toLocaleDateString()}
+              Results for {studentProfile?.full_name} • Attempted on {attemptedDateText}
             </p>
           </div>
           <button
             onClick={handleDownloadPDF}
-            disabled={isDownloading || !attempt?.is_graded}
+            disabled={isDownloading || (!attempt?.is_graded && isCompleted)}
             className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md disabled:opacity-50 cursor-pointer"
           >
             <Download size={18} />
-            {isDownloading ? 'Generating PDF...' : !attempt?.is_graded ? 'Valuating answers...' : 'Download PDF Report'}
+            {isDownloading ? 'Generating PDF...' : (!attempt?.is_graded && isCompleted) ? 'Valuating answers...' : 'Download PDF Report'}
           </button>
         </div>
       </div>
@@ -475,20 +525,27 @@ export const QuizResults: React.FC = () => {
           <div>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Overall Score</h3>
             <p className="text-3xl font-black text-blue-900 mt-2">
-              {attempt?.is_graded ? (
-                <>
-                  {attempt?.score} <span className="text-lg text-gray-400">/ {attempt?.max_score}</span>
-                </>
+              {isCompleted ? (
+                attempt?.is_graded ? (
+                  <>
+                    {effectiveScore} <span className="text-lg text-gray-400">/ {effectiveMaxScore}</span>
+                  </>
+                ) : (
+                  <span className="text-lg text-amber-605 font-bold animate-pulse flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
+                    Valuating score...
+                  </span>
+                )
               ) : (
-                <span className="text-lg text-amber-605 font-bold animate-pulse flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
-                  Valuating score...
-                </span>
+                <>
+                  {effectiveScore} <span className="text-lg text-gray-400">/ {effectiveMaxScore}</span>
+                  <span className="ml-2 text-xs font-bold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full align-middle">Incomplete</span>
+                </>
               )}
             </p>
           </div>
           <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-800 font-bold text-base sm:text-lg">
-            {attempt?.is_graded ? `${percentage}%` : '...'}
+            {isCompleted && !attempt?.is_graded ? '...' : `${percentage}%`}
           </div>
         </div>
 
@@ -497,7 +554,7 @@ export const QuizResults: React.FC = () => {
           <div>
             <h3 className="text-gray-500 text-sm font-bold uppercase tracking-wider">Series Rank</h3>
             <p className="text-3xl font-black text-amber-600 mt-2">
-              {attempt?.is_graded ? rank : '...'}
+              {isCompleted ? (attempt?.is_graded ? rank : '...') : 'N/A'}
             </p>
           </div>
           <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600">

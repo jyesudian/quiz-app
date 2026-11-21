@@ -121,10 +121,19 @@ CREATE POLICY "Admins can manage all enrollments" ON public.series_enrollments F
 ALTER TABLE public.quizzes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enrolled users can view published quizzes" ON public.quizzes FOR SELECT
   USING (
-    status = 'published' AND
-    EXISTS (
-      SELECT 1 FROM public.series_enrollments
-      WHERE series_id = quizzes.series_id AND user_id = auth.uid() AND status = 'approved'
+    status = 'published' AND (
+      EXISTS (
+        SELECT 1 FROM public.series_enrollments
+        WHERE series_enrollments.series_id = quizzes.series_id 
+          AND series_enrollments.user_id = auth.uid() 
+          AND series_enrollments.status = 'approved'
+      )
+      OR
+      EXISTS (
+        SELECT 1 FROM public.quiz_series
+        WHERE quiz_series.id = quizzes.series_id 
+          AND quiz_series.requires_approval = false
+      )
     )
   );
 CREATE POLICY "Admins can manage quizzes" ON public.quizzes FOR ALL USING (public.is_admin(auth.uid()));
@@ -187,7 +196,7 @@ CREATE POLICY "Admins can view all answers" ON public.user_answers FOR SELECT US
 -- 5. LEADERBOARD RPC FUNCTION
 -- ==========================================
 
--- Function to calculate series leaderboard
+-- Function to calculate series leaderboard (only completed attempts)
 CREATE OR REPLACE FUNCTION public.get_series_leaderboard(series_id_param BIGINT)
 RETURNS TABLE (
     user_id UUID,
@@ -199,7 +208,7 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     WITH LatestUserAttempts AS (
-        -- Select only the latest attempt for each user per quiz
+        -- Select only the latest completed attempt for each user per quiz
         SELECT DISTINCT ON (qa.user_id, qa.quiz_id)
             qa.user_id,
             qa.quiz_id,
@@ -208,6 +217,7 @@ BEGIN
         FROM public.quiz_attempts qa
         JOIN public.quizzes q ON qa.quiz_id = q.id
         WHERE q.series_id = series_id_param
+          AND qa.completed_at IS NOT NULL
         ORDER BY qa.user_id, qa.quiz_id, qa.completed_at DESC
     ),
     UserScores AS (
@@ -230,7 +240,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Function to get detailed quiz attempts for a user in a series
+-- Function to get detailed quiz attempts for a user in a series (only completed attempts)
 CREATE OR REPLACE FUNCTION public.get_user_series_attempts(series_id_param BIGINT, user_id_param UUID)
 RETURNS TABLE (
     quiz_id BIGINT,
@@ -247,10 +257,11 @@ BEGIN
         qa.max_score as max_score
     FROM public.quizzes q
     LEFT JOIN (
-        -- Get the latest attempt for the specific user per quiz
+        -- Get the latest completed attempt for the specific user per quiz
         SELECT DISTINCT ON (quiz_attempts.quiz_id) *
         FROM public.quiz_attempts
         WHERE quiz_attempts.user_id = user_id_param
+          AND quiz_attempts.completed_at IS NOT NULL
         ORDER BY quiz_attempts.quiz_id, quiz_attempts.completed_at DESC
     ) qa ON q.id = qa.quiz_id
     WHERE q.series_id = series_id_param AND q.status = 'published'

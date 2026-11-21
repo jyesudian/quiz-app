@@ -13,12 +13,16 @@ export const gradeAttempt = async (attemptId: number): Promise<boolean> => {
     // 1. Fetch the attempt to confirm if it's already graded
     const { data: attempt, error: attemptError } = await supabase
       .from('quiz_attempts')
-      .select('is_graded, score')
+      .select('is_graded, score, max_score, quiz_id, completed_at')
       .eq('id', attemptId)
       .single();
 
     if (attemptError) throw attemptError;
-    if (attempt && attempt.is_graded) {
+    // Do not grade an attempt that is not yet completed
+    if (!attempt || !attempt.completed_at) {
+      return false;
+    }
+    if (attempt.is_graded) {
       return true; // Already graded
     }
 
@@ -96,11 +100,33 @@ export const gradeAttempt = async (attemptId: number): Promise<boolean> => {
 
     const finalTotalScore = (allAnswers || []).reduce((sum, item) => sum + (item.ai_score || 0), 0);
 
-    // 4. Update the attempt to set is_graded = true and update the score
+    let maxScoreToUpdate = attempt.max_score;
+    if (!maxScoreToUpdate || maxScoreToUpdate <= 0) {
+      const { data: questions } = await supabase
+        .from('questions')
+        .select('question_type, question_options(id)')
+        .eq('quiz_id', attempt.quiz_id);
+
+      if (questions && questions.length > 0) {
+        interface QuestionWithOpts {
+          question_type: string;
+          question_options?: { id: number }[];
+        }
+        maxScoreToUpdate = (questions as unknown as QuestionWithOpts[]).reduce((sum: number, q) => {
+          if (q.question_type === 'single' || q.question_type === 'multiple') return sum + 1;
+          if (q.question_type === 'text' || q.question_type === 'picture') return sum + 2;
+          if (q.question_type === 'match') return sum + Math.round(((q.question_options || []).length) * 0.5);
+          return sum + 1;
+        }, 0);
+      }
+    }
+
+    // 4. Update the attempt to set is_graded = true and update the score and max_score
     const { error: updateAttemptError } = await supabase
       .from('quiz_attempts')
       .update({
         score: finalTotalScore,
+        max_score: maxScoreToUpdate || 0,
         is_graded: true
       })
       .eq('id', attemptId);
