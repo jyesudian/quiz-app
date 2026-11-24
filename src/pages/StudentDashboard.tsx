@@ -236,7 +236,7 @@ export const StudentDashboard = () => {
                               ) : (
                                 <span className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-lg font-bold border border-amber-200 flex items-center gap-1.5">
                                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
-                                  Valuating...
+                                  Evaluating...
                                 </span>
                               )}
                               <button onClick={() => navigate(`/quiz-results/${quiz.id}`)} className="bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs px-3 py-1.5 rounded-lg font-bold border border-blue-200 transition-colors cursor-pointer">

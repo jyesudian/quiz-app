@@ -477,7 +477,7 @@ export const TakeQuiz = () => {
       let maxScore = questions.length; // 1 point per question for now
 
       const processedAnswers = [];
-      const hasAiQuestions = questions.some(q => q.type === 'text' || q.type === 'picture');
+      let hasPendingAiQuestions = false;
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
@@ -509,10 +509,11 @@ export const TakeQuiz = () => {
           totalScore += score;
         } else if (q.type === 'text' || q.type === 'picture') {
           textAnswer = studentAnswer || '';
-          // AI Graded, defaults to 0 score here
+          // Subjective question requiring authoritative server-side evaluation (exact match or AI)
           score = 0;
           isCorrect = false;
-          maxScore += 1; // AI grading awards up to 2 points, so add 1 to the base 1 point
+          hasPendingAiQuestions = true;
+          maxScore += 1; // Subjective grading awards up to 2 points, so add 1 to the base 1 point
         } else if (q.type === 'match') {
           textAnswer = studentAnswer ? JSON.stringify(studentAnswer) : null;
           const studentMatches = studentAnswer || {};
@@ -557,7 +558,7 @@ export const TakeQuiz = () => {
         .update({
           score: Math.round(totalScore),
           max_score: Math.round(maxScore),
-          is_graded: !hasAiQuestions,
+          is_graded: !hasPendingAiQuestions,
           completed_at: new Date().toISOString()
         })
         .eq('id', attemptId);
@@ -565,7 +566,7 @@ export const TakeQuiz = () => {
       if (attemptError) throw attemptError;
 
       // Trigger asynchronous background grading if necessary
-      if (hasAiQuestions) {
+      if (hasPendingAiQuestions) {
         gradeAttempt(attemptId).catch(e => {
           console.error("Error in background grading helper:", e);
         });

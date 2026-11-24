@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, Trophy, Download, CheckCircle, XCircle, Info, Award } from 'lucide-react';
+import { ArrowLeft, Trophy, Download, CheckCircle, XCircle, Info, Award, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
 import { gradeAttempt } from '../utils/evaluator';
@@ -48,6 +48,7 @@ export const QuizResults: React.FC = () => {
   const [rank, setRank] = useState<string>('N/A');
   const [studentProfile, setStudentProfile] = useState<any>(null);
   const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const [isRetryingGrading, setIsRetryingGrading] = useState(false);
   const gradingInProgressRef = useRef(false);
 
   // Determine whose results we are viewing
@@ -180,6 +181,26 @@ export const QuizResults: React.FC = () => {
     };
     runGrading();
   }, [attempt?.id, attempt?.completed_at, attempt?.is_graded]);
+
+  const handleRetryGrading = async () => {
+    if (!attempt || isRetryingGrading) return;
+    setIsRetryingGrading(true);
+    toast("Retrying grading evaluation...", { icon: '⏳' });
+    try {
+      const success = await gradeAttempt(attempt.id);
+      if (success) {
+        toast.success("AI grading complete!");
+      } else {
+        toast.error("Some questions could not be evaluated yet. Please verify your connection or try again shortly.");
+      }
+      setRefetchTrigger(prev => prev + 1);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Retry failed";
+      toast.error(msg);
+    } finally {
+      setIsRetryingGrading(false);
+    }
+  };
 
   const handleDownloadPDF = () => {
     if (!quiz || !attempt || !studentProfile) return;
@@ -513,10 +534,33 @@ export const QuizResults: React.FC = () => {
             className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md disabled:opacity-50 cursor-pointer"
           >
             <Download size={18} />
-            {isDownloading ? 'Generating PDF...' : (!attempt?.is_graded && isCompleted) ? 'Valuating answers...' : 'Download PDF Report'}
+            {isDownloading ? 'Generating PDF...' : (!attempt?.is_graded && isCompleted) ? 'Evaluating answers...' : 'Download PDF Report'}
           </button>
         </div>
       </div>
+
+      {/* Pending / Incomplete Evaluation Alert with Retry Button */}
+      {isCompleted && !attempt?.is_graded && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full bg-amber-500 animate-ping"></span>
+            <div>
+              <h4 className="font-bold text-amber-900 text-base">Grading Evaluation In Progress</h4>
+              <p className="text-xs text-amber-700 mt-0.5">
+                AI evaluation for subjective answers is currently running or pending. If network or service was interrupted, you can retry evaluation.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleRetryGrading}
+            disabled={isRetryingGrading}
+            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 whitespace-nowrap"
+          >
+            <RefreshCw size={14} className={isRetryingGrading ? 'animate-spin' : ''} />
+            {isRetryingGrading ? 'Evaluating...' : 'Retry Evaluation'}
+          </button>
+        </div>
+      )}
 
       {/* Score Grid & Rank Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -531,9 +575,9 @@ export const QuizResults: React.FC = () => {
                     {effectiveScore} <span className="text-lg text-gray-400">/ {effectiveMaxScore}</span>
                   </>
                 ) : (
-                  <span className="text-lg text-amber-605 font-bold animate-pulse flex items-center gap-1.5">
+                  <span className="text-lg text-amber-600 font-bold animate-pulse flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping"></span>
-                    Valuating score...
+                    Evaluating score...
                   </span>
                 )
               ) : (
@@ -588,7 +632,7 @@ export const QuizResults: React.FC = () => {
             if (!attempt?.is_graded && (question.type === 'text' || question.type === 'picture')) {
               borderStyle = 'border-amber-200 bg-amber-50/5';
               badgeStyle = 'bg-amber-100 text-amber-800 animate-pulse';
-              statusText = 'Valuating...';
+              statusText = 'Evaluating...';
             } else if (isCorrect || ((question.type === 'text' || question.type === 'picture') && pointsAwarded === 2)) {
               borderStyle = 'border-green-300 bg-green-50/10';
               badgeStyle = 'bg-green-100 text-green-800';
